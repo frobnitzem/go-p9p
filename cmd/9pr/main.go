@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/docker/go-p9p"
+	"github.com/frobnitzem/go-p9p"
 	"golang.org/x/net/context"
 )
 
@@ -30,6 +30,8 @@ func main() {
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
+    fmt.Println("Starting a pprof server on http://localhost:6060/debug/pprof.")
+    fmt.Println("See https://pkg.go.dev/net/http/pprof for details.")
 
 	ctx := context.Background()
 	log.SetFlags(0)
@@ -244,13 +246,17 @@ func (c *fsCommander) cmdcd(ctx context.Context, args ...string) error {
 	targetfid := c.nextfid
 	c.nextfid++
 	components := strings.Split(strings.TrimSpace(strings.Trim(p, "/")), "/")
-	if _, err := c.session.Walk(c.ctx, c.rootfid, targetfid, components...); err != nil {
+    var qids []p9p.Qid
+    var err error
+	if qids, err = c.session.Walk(c.ctx, c.rootfid, targetfid, components...); err != nil {
 		return err
 	}
+    components = components[:len(qids)]
+
 	defer c.session.Clunk(c.ctx, c.pwdfid)
 
 	log.Println("cd", p, targetfid)
-	c.pwd = p
+	c.pwd = "/"+strings.Join(components, "/")
 	c.pwdfid = targetfid
 
 	return nil

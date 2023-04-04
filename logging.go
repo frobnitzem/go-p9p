@@ -14,6 +14,8 @@ type logging struct {
 
 var _ Session = &logging{}
 
+// Wrap a Session, producing log messages to os.Stdout
+// whenever Auth, Attach, and Remove are called.
 func NewLogger(prefix string, session Session) Session {
 	return &logging{
 		session: session,

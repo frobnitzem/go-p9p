@@ -11,7 +11,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/docker/go-p9p"
+	"github.com/frobnitzem/go-p9p"
 )
 
 type session struct {
@@ -85,9 +85,7 @@ func (sess *session) Attach(ctx context.Context, fid, afid p9p.Fid, uname, aname
 	// 	return p9p.Qid{}, p9p.MessageRerror{Ename: "attach: no auth"}
 	// }
 
-	if aname == "" {
-		aname = sess.rootRef.Path
-	}
+	aname = sess.rootRef.Path
 
 	ref, err := sess.newRef(fid, aname)
 	if err != nil {
@@ -146,7 +144,12 @@ func (sess *session) Walk(ctx context.Context, fid p9p.Fid, newfid p9p.Fid, name
 	for _, name := range names {
 		newpath := filepath.Join(path, name)
 		r := &FileRef{Path: newpath}
-		if err := r.Stat(); err != nil {
+		if err = r.Stat(); err != nil {
+            // An error on the first path element is handled differently.
+            if len(qids) == 0 {
+                delete(sess.refs, newfid)
+                return qids, p9p.MessageRerror{Ename: "not found"}
+            }
 			break
 		}
 		qids = append(qids, r.Info.Qid)

@@ -5,9 +5,10 @@ import (
 	"log"
 	"net"
 	"strings"
+	"fmt"
 
-	"github.com/docker/go-p9p"
-	"github.com/docker/go-p9p/ufs"
+	"github.com/frobnitzem/go-p9p"
+	"github.com/frobnitzem/go-p9p/ufs"
 	"golang.org/x/net/context"
 )
 
@@ -25,6 +26,7 @@ func main() {
 	ctx := context.Background()
 	log.SetFlags(0)
 	flag.Parse()
+    fmt.Println("Serving ", root, " at ", addr);
 
 	proto := "tcp"
 	if strings.HasPrefix(addr, "unix:") {

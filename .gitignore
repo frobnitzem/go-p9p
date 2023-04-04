@@ -2,6 +2,7 @@
 *.o
 *.a
 *.so
+coverage.txt
 
 # Folders
 _obj
