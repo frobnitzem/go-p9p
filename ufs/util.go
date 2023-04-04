@@ -4,7 +4,7 @@ import (
 	"os"
 	"syscall"
 
-	p9p "github.com/docker/go-p9p"
+	p9p "github.com/frobnitzem/go-p9p"
 )
 
 func dirFromInfo(info os.FileInfo) p9p.Dir {
