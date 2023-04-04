@@ -25,6 +25,10 @@ func (fn HandlerFunc) Handle(ctx context.Context, msg Message) (Message, error) 
 // Dispatch returns a handler that dispatches messages to the target session.
 // No concurrency is managed by the returned handler. It simply turns messages
 // into function calls on the session.
+//
+// TODO(frobnitzem): Manage Fid-s at this level.
+//    For example, https://9fans.github.io/usr/local/plan9/src/cmd/ramfs.c
+//    uses user-defined structs for Fid-s.
 func Dispatch(session Session) Handler {
 	return HandlerFunc(func(ctx context.Context, msg Message) (Message, error) {
 		switch msg := msg.(type) {

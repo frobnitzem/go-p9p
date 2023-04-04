@@ -187,8 +187,8 @@ func TestEncodeDecode(t *testing.T) {
 			},
 			marshaled: []byte{
 				0x7d, 0xb4, 0x15,
-				0x42, 0x0, // TODO(stevvooe): Include Dir size. Not straightforward.
-				0x40, 0x0, // TODO(stevvooe): Include Dir size. Not straightforward.
+				0x42, 0x0, // TODO(stevvooe): Compute this Dir size. see
+				0x40, 0x0, // TODO(stevvooe): https://9p.io/magic/man2html/5/stat
 				0xff, 0xff, // type
 				0xff, 0xff, 0xff, 0xff, // dev
 				0x80, 0xff, 0xff, 0xff, 0xff, // qid.type, qid.version
