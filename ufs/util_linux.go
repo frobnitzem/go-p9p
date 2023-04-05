@@ -1,4 +1,5 @@
 // +build linux
+
 package ufs
 
 import (

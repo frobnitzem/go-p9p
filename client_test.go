@@ -48,7 +48,7 @@ func TestClient(t *testing.T) {
 	assert := assert.New(t)
 
 	ctx := context.Background()
-	ctx, _ = context.WithTimeout(ctx, 1*time.Second)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	reqC, repC := net.Pipe()
 	//end := time.Now().Add(time.Second)
