@@ -55,16 +55,16 @@ const (
 // Operations are not thread-safe but reads and writes may be carried out
 // concurrently, supporting separate read and write loops.
 //
-// Lifecyle
+// # Lifecyle
 //
 // A connection, or message channel abstraction, has a lifecycle delineated by
 // Tversion/Rversion request response cycles. For now, this is part of the
 // channel itself but doesn't necessarily influence the channels state, except
 // the msize. Visually, it might look something like this:
 //
-// 	[Established] -> [Version] -> [Session] -> [Version]---+
+//	[Established] -> [Version] -> [Session] -> [Version]---+
 //	                     ^                                 |
-// 	                     |_________________________________|
+//	                     |_________________________________|
 //
 // The connection is established, then we negotiate a version, run a session,
 // then negotiate a version and so on. For most purposes, we are likely going

@@ -9,7 +9,7 @@ The package revolves around the session type, which is an enumeration of raw
 deferring their usage to the server implementation. Sessions can be trivially
 proxied through clients and servers.
 
-Getting Started
+# Getting Started
 
 The best place to get started is with Serve. Serve can be provided a
 connection and a handler. A typical implementation will call Serve as part of
@@ -23,7 +23,7 @@ a version negotiation, methods can be called on the session, in parallel, and
 calls will be sent over the connection. Call timeouts can be controlled via
 the context provided to each method call.
 
-Framework
+# Framework
 
 This package has the beginning of a nice client-server framework for working
 with 9p. Some of the abstractions aren't entirely fleshed out, but most of
@@ -34,7 +34,7 @@ glaring are directory read and walk helpers. Other, more complex additions
 might be a system to manage in memory filesystem trees that expose multi-user
 sessions.
 
-Differences
+# Differences
 
 The largest difference between this package and other 9p packages is
 simplification of the types needed to implement a server. To avoid confusing
@@ -44,7 +44,7 @@ longer hold mutable state. This means that framing, transport management,
 encoding, and dispatching are componentized. Little work will be required to
 swap out encodings, transports or connection implementations.
 
-Context Integration
+# Context Integration
 
 This package has been wired from top to bottom to support context-based
 resource management. Everything from startup to shutdown can have timeouts
@@ -54,7 +54,7 @@ Timeouts can be very granular or very course, depending on the context of the
 timeout. For example, it is very easy to set a short timeout for a stat call
 but a long timeout for reading data.
 
-Multiversion Support
+# Multiversion Support
 
 Currently, there is not multiversion support. The hooks and functionality are
 in place to add multi-version support. Generally, the correct space to do this
@@ -66,7 +66,7 @@ The real question to ask here is what is the role of the version number in the
 need it at the protocol level, or do handlers and sessions need to be have
 differently based on negotiated versions?
 
-Caveats
+# Caveats
 
 This package has a number of TODOs to make it easier to use. Most of the
 existing code provides a solid base to work from. Don't be discouraged by the
