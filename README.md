@@ -84,11 +84,17 @@ server.go: `(c *conn) serve() error`
 
 client.go: `NewSession(ctx context.Context, conn net.Conn) (Session, error)`
   - negotiates protocol, returns client object
-  - client object has raw Walk/Stat/Open/Read methods
+  - client object has Walk/Stat/Open/Read methods that appear like
+    synchronous send/receive pairs.  Many requests can be sent in parallel,
+    however (e.g. one goroutine each), and the transport will handle
+    them in parallel, doing tag matching to return to the correct call.
 
 transport.go: `func newTransport(ctx context.Context, ch Channel) roundTripper`
   - starts a `handle` goroutine to take messages off the wire
     and invoke waiting response actions in the client.
+  - roundTripper uses an internal channel to communicate with the handle
+    so that each roundTripper can be synchronous, while the handler
+    actually handles may requests.
 
 ### Common lower-layers
 
