@@ -27,8 +27,9 @@ func (fn HandlerFunc) Handle(ctx context.Context, msg Message) (Message, error) 
 // into function calls on the session.
 //
 // TODO(frobnitzem): Manage Fid-s at this level.
-//    For example, https://9fans.github.io/usr/local/plan9/src/cmd/ramfs.c
-//    uses user-defined structs for Fid-s.
+//
+//	For example, https://9fans.github.io/usr/local/plan9/src/cmd/ramfs.c
+//	uses user-defined structs for Fid-s.
 func Dispatch(session Session) Handler {
 	return HandlerFunc(func(ctx context.Context, msg Message) (Message, error) {
 		switch msg := msg.(type) {

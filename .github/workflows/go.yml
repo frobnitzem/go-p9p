@@ -8,7 +8,7 @@ on:
 
 jobs:
 
-  build:
+  buildtest:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -19,13 +19,15 @@ jobs:
         go-version: 1.19
 
     - name: Build
-      run: go build
+      run: go build ./...
 
     - name: Test
-      run: go test -coverprofile=coverage.txt -covermode=atomic -race
+      run: go test -coverprofile=coverage.txt -covermode=atomic -race ./...
       
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
 
 #after_success:
 #  - bash <(curl -s https://codecov.io/bash)
