@@ -4,6 +4,7 @@ import (
 	"net"
 	"testing"
 	"time"
+    "sync"
 
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
@@ -13,10 +14,11 @@ import (
 /** Mimick the client and test the server's behavior.
  */
 func TestServer(t *testing.T) {
+    var wg sync.WaitGroup
 	assert := assert.New(t)
 
 	ctx := context.Background()
-	ctx, _ = context.WithTimeout(ctx, 1*time.Second)
+    sctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 
 	reqC, repC := net.Pipe()
 	//end := time.Now().Add(time.Second)
@@ -26,16 +28,19 @@ func TestServer(t *testing.T) {
     // Note: nanoseconds are not encoded in file times
 	theTime := time.Unix(112321, 0).UTC()
 	theDir := p9p.Dir{AccessTime: theTime, ModTime: theTime}
+    wg.Add(1)
 	go func() {
-        session, err := NewSession(ctx, "/tmp")
-        assert.Nil(err)
-
-        err = p9p.ServeConn(ctx, repC, p9p.Dispatch(session))
+        defer wg.Done()
+        session, err := NewSession(sctx, "/tmp")
         assert.Nil(err)
 
 		msize, version := session.Version()
 		assert.Equal("9P2000", version)
 		assert.True(msize >= 1024)
+
+        err = p9p.ServeConn(sctx, repC, p9p.Dispatch(session))
+        assert.NotNil(err)
+        assert.Equal(err.Error(), "context canceled")
 	}()
 
 	var count int
@@ -97,4 +102,7 @@ func TestServer(t *testing.T) {
 
 	err = session.Clunk(ctx, fid0)
     assert.Nil(err)
+
+    cancel() // signal the server to stop serving
+    wg.Wait()
 }
