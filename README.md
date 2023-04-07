@@ -118,10 +118,59 @@ encoding.go: `interface Codec`
   - provides Marshal, Unmarshal, and Size for converting between
     `[]byte` and 9P message structs.
 
+## Server Locking Sequences
+
+Lookup a Fid (normal):
+
+0. assert Fid != NOFID
+1. lock session, lookup fid, unlock session
+2. lock + unlock ref
+   - This ensures that the ref was unlocked at some past point.
+   - Not used until clunk.4 can be addressed
+
+Lookup a Fid (locked):
+
+0. assert Fid != NOFID
+1. lock session, lookup fid, unlock session
+2. lock ref
+   - This ensures that the ref was unlocked at some past point.
+   - client unlocks when they are done with operation on Fid
+   - This forces no parallel operations on Fid at all.
+   - May not be a bad convention, clone fids if you want parallel
+     access.
+
+Clunk/Remove a Fid:
+
+1. lock session, lookup fid, unlock session
+2. lock ref, lock session, delete fid:ref, unlock session, unlock ref
+3. close if ref.file != nil
+4. clunk/remove ref.ent
+   - This doesn't work because we may get multiple Walk/Open/Stat
+     requests in parallel with Clunk. We need a way to stop
+     those actions, then clunk.
+
+Auth:
+
+1. lock session, lookup afid (ensure not present),
+   create locked aref, store afid:aref, unlock session
+2. call Auth function to set aref.afile
+3. unlock afid
+
+Attach:
+
+1. if fs.RequireAuth()):
+  a. lock session, lookup aref, unlock session
+  b. lock aref, call ok := aref.afile.Success(), unlock aref
+  c. assert ok
+2. ref := holdRef [lock session, lookup fid (ensure not present),
+                   create locked ref, store afid:aref, unlock session]
+3. ent, err := Root()
+4. if err { lock session, delete fid:ref, unlock session, return }
+5. set ref.ent = ent, unlock ref
+
 ## Copyright and license
 
 Copyright © 2015 Docker, Inc.
 Copyright © 2023 UT-Battelle LLC.
 go-p9p is licensed under the Apache License,
 Version 2.0. See [LICENSE](LICENSE) for the full license text.
-

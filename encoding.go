@@ -24,6 +24,8 @@ type Codec interface {
 }
 
 // NewCodec returns a new, standard 9P2000 codec, ready for use.
+// TODO(frobnitzem): enforce no extensions (e.g. 9P2000.u)
+// at protocol level
 func NewCodec() Codec {
 	return codec9p{}
 }
