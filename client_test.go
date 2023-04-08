@@ -55,7 +55,7 @@ func TestClient(t *testing.T) {
 	//reqC.SetDeadline(end)
 	//repC.SetDeadline(end)
 
-    // Note: nanoseconds are not encoded in file times
+	// Note: nanoseconds are not encoded in file times
 	theTime := time.Unix(112321, 0).UTC()
 	theDir := Dir{AccessTime: theTime,
 		ModTime: theTime}

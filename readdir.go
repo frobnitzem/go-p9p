@@ -94,9 +94,9 @@ done:
 
 // Build out Readdir to implement the full File interface
 func (rd *Readdir) Write(context.Context, []byte, int64) (int, error) {
-    return 0, MessageRerror{Ename: "invalid"}
+	return 0, MessageRerror{Ename: "invalid"}
 }
 
 func (rd *Readdir) Close(context.Context) error {
-    return nil
+	return nil
 }

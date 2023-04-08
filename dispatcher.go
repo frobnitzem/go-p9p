@@ -25,7 +25,6 @@ func (fn HandlerFunc) Handle(ctx context.Context, msg Message) (Message, error) 
 // Dispatch returns a handler that dispatches messages to the target session.
 // No concurrency is managed by the returned handler. It simply turns messages
 // into function calls on the session.
-//
 func Dispatch(session Session) Handler {
 	return HandlerFunc(func(ctx context.Context, msg Message) (Message, error) {
 		switch msg := msg.(type) {
