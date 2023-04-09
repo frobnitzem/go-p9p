@@ -18,8 +18,8 @@ var (
 )
 
 func init() {
-	flag.StringVar(&root, "root", "~/", "root of filesystem to serve over 9p")
-	flag.StringVar(&addr, "addr", ":5640", "bind addr for 9p server, prefix with unix: for unix socket")
+	flag.StringVar(&root, "root", "/tmp", "root of filesystem to serve over 9p")
+	flag.StringVar(&addr, "addr", "localhost:5640", "bind addr for 9p server, prefix with unix: for unix socket")
 }
 
 func main() {
@@ -52,11 +52,7 @@ func main() {
 
 			ctx := context.WithValue(ctx, "conn", conn)
 			log.Println("connected", conn.RemoteAddr())
-			session, err := ufs.NewSession(ctx, root)
-			if err != nil {
-				log.Println("error creating session")
-				return
-			}
+            session := p9p.FSession( ufs.NewServer(ctx, root) )
 
 			if err := p9p.ServeConn(ctx, conn, p9p.Dispatch(session)); err != nil {
 				log.Printf("serving conn: %v", err)

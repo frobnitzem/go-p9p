@@ -33,7 +33,7 @@ func TestServer(t *testing.T) {
         defer wg.Done()
 
         srv := NewServer(sctx, "/tmp")
-        session := p9p.NewServer(srv)
+        session := p9p.FSession(srv)
 
 		msize, version := session.Version()
 		assert.Equal("9P2000", version)

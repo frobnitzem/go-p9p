@@ -15,7 +15,7 @@ type client struct {
 }
 
 // NewSession returns a session using the connection. The Context ctx provides
-// a context for out of bad messages, such as flushes, that may be sent by the
+// a context for out of band messages, such as flushes, that may be sent by the
 // session. The session can effectively shutdown with this context.
 func NewSession(ctx context.Context, conn net.Conn) (Session, error) {
 	ch := newChannel(conn, codec9p{}, DefaultMSize) // sets msize, effectively.
@@ -38,6 +38,10 @@ var _ Session = &client{}
 
 func (c *client) Version() (int, string) {
 	return c.msize, c.version
+}
+
+func (c *client) Stop(err error) error {
+    return err
 }
 
 func (c *client) Auth(ctx context.Context, afid Fid, uname, aname string) (Qid, error) {

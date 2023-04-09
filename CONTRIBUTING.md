@@ -1,9 +1,12 @@
-# Contributing to Docker open source projects
+# Contributing
 
-Want to hack on this project? Awesome! Here are instructions to get you started.
+Want to hack on this project? Awesome!
+Here are instructions to get you started.
 
-This project is a part of the [Docker](https://www.docker.com) project, and follows
-the same rules and principles. If you're already familiar with the way
+This project was originally a part of the [Docker](https://www.docker.com)
+project.
+We'll stick with the same rules and principles.
+If you're already familiar with the way
 Docker does things, you'll feel right at home.
 
 Otherwise, go read Docker's

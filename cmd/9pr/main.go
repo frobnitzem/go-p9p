@@ -23,7 +23,7 @@ import (
 var addr string
 
 func init() {
-	flag.StringVar(&addr, "addr", ":5640", "addr of 9p service")
+	flag.StringVar(&addr, "addr", "localhost:5640", "addr of 9p service")
 }
 
 func main() {

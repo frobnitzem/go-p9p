@@ -59,7 +59,7 @@ func (ref *FileRef) Clone(ctx context.Context) (p9p.Dirent, error) {
 func (ref *FileRef) Walk(ctx context.Context, name string) (p9p.Dirent, error) {
     // name is guaranteed not to contain '/'
     // Properly handles .. since Path starts with '/'
-	newpath := filepath.Join(ref.Path, name)
+	newpath := relName(ref.Path, name)
 	return ref.fs.newRef(newpath)
 }
 

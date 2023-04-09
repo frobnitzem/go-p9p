@@ -63,15 +63,28 @@ and session encryption is on the TODO list.
 
 ### Server Stack
 
+servefs.go: FSession(fs FServer) Session
+  - Creates a Session type from an FServer
+  - The FServer represents a fileserver broken into 3 levels,
+    AuthFile-s, Dirent-s, and Files
+  - Rather than track Fid-s, calls to Dirent-s create
+    more Dirent and Files.
+
 dispatcher.go: `Dispatch(session Session) Handler`
-  - runs a function call (from Session) for each type of messages.go:Message
-    (does not see TFlush, but has ctx instead)
+  - Delegates each type of messages.go:Message to a
+    function call (from Session).
+  - Tags and TFlush-s are handled at this level,
+    so higher levels do not see them.  Instead, they see 
+    context.Context objects to indicate potential cancellation.
 
-server.go: `ServeConn(ctx context.Context, cn net.Conn, handler Handler) error`
-  - negotiates protocol (with a timeout of 1 second)
-  - calls server loop, reading messages and sending them to the handler
+serveconn.go: `ServeConn(ctx context.Context, cn net.Conn, handler Handler) error`
+  - Negotiates protocol (with a timeout of 1 second).
+  - Calls server loop, reading messages and sending them to the handler.
+  - Version messages are handled at this level.  They
+    have the effect of deleting the current session
+    and starting a new one. (Note: Check this to be sure.)
 
-server.go: `(c *conn) serve() error`
+serverconn.go: `(c *conn) serve() error`
   - Server loop, strips Tags and TFlush messages
   - details:
       - runs reader and writer goroutines
@@ -120,24 +133,18 @@ encoding.go: `interface Codec`
 
 ## Server Locking Sequences
 
-Lookup a Fid (normal):
-
-0. assert Fid != NOFID
-1. lock session, lookup fid, unlock session
-2. lock + unlock ref
-   - This ensures that the ref was unlocked at some past point.
-   - Not used until clunk.4 can be addressed
-
-Lookup a Fid (locked):
+Lookup a Fid:
 
 0. assert Fid != NOFID
 1. lock session, lookup fid, unlock session
 2. lock ref
    - This ensures that the ref was unlocked at some past point.
-   - client unlocks when they are done with operation on Fid
+3. if ref.ent == nil, fid is being deleted, unlock and
+   return "no fid"
+4. return ref in locked state
+   - Client unlocks when they are done with operation on Fid.
    - This forces no parallel operations on Fid at all.
-   - May not be a bad convention, clone fids if you want parallel
-     access.
+   - Convention: clone fids if you want parallel access.
 
 Clunk/Remove a Fid:
 
@@ -167,6 +174,13 @@ Attach:
 3. ent, err := Root()
 4. if err { lock session, delete fid:ref, unlock session, return }
 5. set ref.ent = ent, unlock ref
+
+Note:
+Rather than using a locked fid lookup table, we could have
+the dispatcher do fid lookups, and send requests on a channel
+dedicated to (a goroutine) serving only that fid.  This may be
+an optimization, or it may not - only lots of work and profiling
+will tell.  So, this has not been tried.
 
 ## Copyright and license
 
