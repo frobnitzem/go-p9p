@@ -302,8 +302,8 @@ func (sess *session) Remove(ctx context.Context, fid Fid) error {
 func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 	names ...string) ([]Qid, error) {
 
-    names, ok := NormalizePath(names)
-    if !ok {
+    bsp := ValidPath(names)
+    if bsp < 0 { // check that path is normalized
         return nil, MessageRerror{Ename: "Invalid path"}
     }
 	var qids []Qid
@@ -311,9 +311,6 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 
 	var newref *dirEnt
 
-	// TODO(frobnitzem): use a list of ctx-s to
-	// prevent close during any other action.
-	// This involves modifying sess.getRef and sess.delRef
 	ref, err := sess.getRef(fid)
 	if err != nil {
 		return nil, err
@@ -341,38 +338,34 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 
 	// Both paths below must define ent and qids (or else return nil,err)
 	if len(names) == 0 { // Clone
-		if newfid == fid { // Walk is a no-op
-			return append(qids, ent.Qid()), nil
+		if newfid == fid { // a no-op
+			return nil, nil
 		}
 		var err error
-		ent, err = ref.ent.Clone(ctx)
+		_, ent, err = ref.ent.Walk(ctx)
 		if err != nil {
 			return nil, err
 		}
-		qids = append(qids, ent.Qid())
 	} else {
-		var next Dirent
 		var err error
 
-		ent = ref.ent
-
-		for _, name := range names {
-			if !IsDir(ent) {
-				err = MessageRerror{Ename: "not a directory"}
-				break
-			}
-			next, err = ent.Walk(ctx, name)
-			if err != nil {
-				break
-			}
-			ent = next
-			qids = append(qids, ent.Qid())
+		if !IsDir(ref.ent) {
+			err = MessageRerror{Ename: "not a directory"}
+			return nil, err
 		}
+        qids, ent, err = ref.ent.Walk(ctx, names...)
+        if err != nil {
+			return nil, err
+        }
 		// An error walking the first path element gets propagated.
 		if len(qids) == 0 {
-			return qids, err
+			return nil, err
 		}
-	}
+    }
+    // "Only if it is equal, however, will newfid be affected"
+    if len(qids) != len(names) {
+        return qids, nil
+    }
 
 	if newfid == fid {
 		// Re-use fid for result of walk.
@@ -434,8 +427,11 @@ func (sess *session) Open(ctx context.Context, fid Fid,
 	return openLocked(ctx, ref, mode)
 }
 
+func (_ *Readdir) IOUnit() int {
+    return 0
+}
+
 // Note: This does not check file permissions
-//
 //	before opening!  It is up to the caller.
 func openLocked(ctx context.Context, ref *dirEnt,
 	mode Flag) (Qid, uint32, error) {
@@ -464,8 +460,7 @@ func openLocked(ctx context.Context, ref *dirEnt,
 	}
 
 	ref.file = file
-	iounit := uint32(0)
-	return ref.ent.Qid(), iounit, nil
+	return ref.ent.Qid(), uint32(file.IOUnit()), nil
 }
 
 func (sess *session) Create(ctx context.Context, parent Fid, name string,

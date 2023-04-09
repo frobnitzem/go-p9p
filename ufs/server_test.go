@@ -82,7 +82,7 @@ func TestServer(t *testing.T) {
 
     qids, err := session.Walk(ctx, fid0, fid1) // Clone
     assert.Nil(err)
-    assert.True( len(qids) == 1 )
+    assert.True( len(qids) == 0 )
     if len(qids) == 1 {
         assert.True( qids[0].Type & p9p.QTDIR != 0, "fid1 is also a dir.")
     }

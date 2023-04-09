@@ -6,7 +6,7 @@ import (
     "context"
 	"io"
 	"io/ioutil"
-	"path/filepath"
+	"path"
 	"syscall"
 	"strconv"
 
@@ -52,22 +52,38 @@ func (ref *FileRef) Remove(ctx context.Context) error {
 	return os.Remove(ref.fullPath())
 }
 
-func (ref *FileRef) Clone(ctx context.Context) (p9p.Dirent, error) {
-	return ref.fs.newRef(ref.Path)
-}
+func (ref *FileRef) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.Dirent, error) {
+    if len(names) == 0 {
+        next, err := ref.fs.newRef(ref.Path)
+        return nil, next, err
+    }
 
-func (ref *FileRef) Walk(ctx context.Context, name string) (p9p.Dirent, error) {
-    // name is guaranteed not to contain '/'
-    // Properly handles .. since Path starts with '/'
-	newpath := relName(ref.Path, name)
-	return ref.fs.newRef(newpath)
+    // names is guaranteed to pass p9p.ValidPath
+	newpath, err := relName(ref.Path, names...)
+    if err != nil { 
+        return nil, nil, err
+    }
+    next, err := ref.fs.newRef(newpath)
+    // TODO(frobnitzem): return qid-s corresponding to partial walk
+    if err != nil {
+        return nil, nil, err
+    }
+    qids := make([]p9p.Qid, len(names))
+    qids[len(qids)-1] = next.Qid()
+    return qids, next, err
 }
 
 func (ref *FileRef) Create(ctx context.Context, name string,
                            perm uint32, mode p9p.Flag) (p9p.Dirent, error) {
-    var err error
-    newrel := relName(ref.Path, name)
-	newpath := filepath.Join(ref.fs.Base, newrel)
+    // relName requires name to be in current dir
+    newrel, err := relName(ref.Path, name)
+    if err != nil {
+		return nil, err
+    }
+	newpath, err := ref.fs.fullPath(newrel)
+    if err != nil {
+		return nil, err
+    }
 
     var file *os.File
 	switch {
@@ -133,11 +149,18 @@ func (ref *FileRef) WStat(ctx context.Context, dir p9p.Dir) error {
     }
 
 	if dir.Name != "" {
-        rel := relName(filepath.Dir(ref.Path), dir.Name)
-
-		newpath := filepath.Join(ref.fs.Base, rel)
-		if err := syscall.Rename(ref.fullPath(), newpath); err != nil {
-			return nil
+        var err error
+        var rel string
+        if ! path.IsAbs(dir.Name) {
+            rel = path.Join(path.Dir(ref.Path), dir.Name)
+        }
+        rel = path.Clean(rel)
+		newpath, err := ref.fs.fullPath(rel)
+        if err != nil {
+			return err
+        }
+		if err = syscall.Rename(ref.fullPath(), newpath); err != nil {
+			return err
 		}
 		ref.Path = rel
 	}
@@ -201,4 +224,8 @@ func (file *fWrap) Write(ctx context.Context, p []byte,
 func (file *fWrap) Close(ctx context.Context) error {
 	file.File.Close()
 	return nil
+}
+
+func (_ *fWrap) IOUnit() int {
+    return 0
 }

@@ -2,39 +2,49 @@ package p9p
 
 import "strings"
 
-// Returns false if any path elements contain '/' or '\'
-// or if the number of ".."-s is more than depth
-func ValidPath(args []string, depth int) bool {
-	for _, s := range args {
-		if s == ".." {
-			depth--
-			if depth < 0 {
-				return false
+// Returns -1 if any path elements are '.' or
+// contain characters '/' or '\'
+// or if .. follows a non-..
+// Otherwise, returns the number of leading .. elements.
+func ValidPath(args []string) int {
+    n := 0
+	for i, s := range args {
+		if s == "." {
+            return -1
+        } else if s == ".." {
+			if n != i {
+				return -1
 			}
-		}
-
-		if strings.ContainsAny(s, "\\/") {
-			return false
-		}
+            n++
+		} else {
+            if strings.ContainsAny(s, "\\/") {
+                return -1
+            }
+        }
 	}
-	return true
+	return n
 }
 
-// Normalize a path by removing all ”, '.', and treating
+// Normalize a path by removing all '', '.', and treating
 // all '..' as backspaces.  The result may only
 // contain '..' elements at the beginning of the path.
 // Functional, so it effectively copies the path.
 //
+// Returns (cleaned path, backspaces)
+// where backspaces = -1 in case of an error
+// or else indicates the number of leading ".." elements
+// in case of success.
+//
 // Note: path.Clean does this probably more efficiently,
-// but doesn't leave .. at the root, which we sometimes need.
-func NormalizePath(args []string) ([]string, bool) {
+// but doesn't leave .. at the root, which we need.
+func NormalizePath(args []string) ([]string, int) {
 	ans := make([]string, len(args))
 
 	cursor := 0
 	lo := 0 // highest non-.. entry
 	for _, s := range args {
 		if strings.ContainsAny(s, "\\/") {
-            return nil, false
+            return nil, -1
         }
 		if len(s) == 0 || s == "." { // skip
 			continue
@@ -50,5 +60,5 @@ func NormalizePath(args []string) ([]string, bool) {
 		ans[cursor] = s
 		cursor++
 	}
-	return ans[:cursor], true
+	return ans[:cursor], lo
 }

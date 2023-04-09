@@ -3,13 +3,15 @@ package ufs
 import (
 	"os"
 	"context"
+	"path"
+	"strings"
 	"path/filepath"
 
 	"github.com/frobnitzem/go-p9p"
 )
 
 type fServer struct {
-    Base    string
+    Base    string // Base path of file server, in OS format.
     rootRef FileRef
 }
 
@@ -18,31 +20,52 @@ type fServer struct {
 //   Path never contains . or .. components
 type FileRef struct {
     fs      *fServer
-	Path    string // relative to root
+	Path    string // Unix-separated path, relative to root
 	Info    p9p.Dir
 }
 
+// These fullPath functions should be the only way used to create a path
+// referencing the underlying system.  They ensure
+// we only access files inside our domain.
+
+// Return the system's underlying path for the
+// absolute path, p (within the server's domain).
+func (fs *fServer) fullPath(p string) (string, error) {
+    if strings.Contains(p, "\\") {
+        return "", p9p.MessageRerror{Ename: "Invalid path"}
+    }
+    rel := path.Clean(p) // removes ../ at root.
+    return filepath.Join(fs.Base, filepath.FromSlash(rel)), nil
+}
+// Return the system's underlying path for the ref.
 func (ref *FileRef) fullPath() string {
-    return filepath.Join(ref.fs.Base, ref.Path)
+    return filepath.Join(ref.fs.Base, filepath.FromSlash(ref.Path))
 }
 
-// Find the absolute path of name relative to dir.
-// dir must be an absolute path.
-func relName(dir string, name string) string {
-    if !filepath.IsAbs(name) { // first make absolute
-        name = filepath.Join(dir, name)
+// Find the absolute path of names relative to dir.
+// dir must be an absolute (Unix-convention) path.
+// names cannot contain filepath separators (checked by p9p.ValidPath).
+func relName(dir string, names ...string) (string, error) {
+    depth := strings.Count(dir, "/")-1
+    bsp := p9p.ValidPath(names)
+    if bsp > depth {
+        return dir, p9p.MessageRerror{Ename: "Invalid path"}
     }
-    return filepath.Clean(name) // normalize and remove leading ../
+
+    return path.Join(dir, path.Join(names...)), nil
 }
 
 func (fs *fServer) newRef(rel string) (*FileRef, error) {
-    if len(rel) < 1 || !filepath.IsAbs(rel) {
+    if len(rel) < 1 || !path.IsAbs(rel) {
         return nil, p9p.MessageRerror{Ename: "Invalid path"}
     }
     // Normalizes, and removes any leading ../
-    rel = filepath.Clean(rel)
-
-	info, err := os.Stat(filepath.Join(fs.Base, rel))
+    rel = path.Clean(rel)
+    fpath, err := fs.fullPath(rel)
+    if err != nil {
+		return nil, err
+    }
+	info, err := os.Stat(fpath)
 	if err != nil {
 		return nil, err
 	}
