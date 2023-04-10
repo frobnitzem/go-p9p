@@ -25,9 +25,9 @@ func ValidPath(args []string) int {
 	return n
 }
 
-// Normalize a path by removing all ”, '.', and treating
-// all '..' as backspaces.  The result may only
-// contain '..' elements at the beginning of the path.
+// Normalize a path by removing all "" and "." elements,
+// and treating all ".." as backspaces.  The result may only
+// contain ".." elements at the beginning of the path.
 // Functional, so it effectively copies the path.
 //
 // Returns (cleaned path, backspaces)
