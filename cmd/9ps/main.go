@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"strings"
-	"fmt"
 
 	"github.com/frobnitzem/go-p9p"
 	"github.com/frobnitzem/go-p9p/ufs"
@@ -26,7 +26,7 @@ func main() {
 	ctx := context.Background()
 	log.SetFlags(0)
 	flag.Parse()
-    fmt.Println("Serving ", root, " at ", addr);
+	fmt.Println("Serving ", root, " at ", addr)
 
 	proto := "tcp"
 	if strings.HasPrefix(addr, "unix:") {
@@ -52,7 +52,7 @@ func main() {
 
 			ctx := context.WithValue(ctx, "conn", conn)
 			log.Println("connected", conn.RemoteAddr())
-            session := p9p.FSession( ufs.NewServer(ctx, root) )
+			session := p9p.FSession(ufs.NewServer(ctx, root))
 
 			if err := p9p.ServeConn(ctx, conn, p9p.Dispatch(session)); err != nil {
 				log.Printf("serving conn: %v", err)

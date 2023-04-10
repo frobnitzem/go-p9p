@@ -41,7 +41,7 @@ func (c *client) Version() (int, string) {
 }
 
 func (c *client) Stop(err error) error {
-    return err
+	return err
 }
 
 func (c *client) Auth(ctx context.Context, afid Fid, uname, aname string) (Qid, error) {

@@ -1,20 +1,20 @@
 package ufs
 
 import (
-	"os"
-	"os/user"
-    "context"
+	"context"
 	"io"
 	"io/ioutil"
+	"os"
+	"os/user"
 	"path"
-	"syscall"
 	"strconv"
+	"syscall"
 
 	p9p "github.com/frobnitzem/go-p9p"
 )
 
 type fWrap struct {
-    File *os.File
+	File *os.File
 }
 
 func (f *FileRef) IsDir() bool {
@@ -22,70 +22,86 @@ func (f *FileRef) IsDir() bool {
 }
 
 func (ref *FileRef) Qid() p9p.Qid {
-    return ref.Info.Qid
+	return ref.Info.Qid
 }
 
-func (ref *FileRef) Entries(ctx context.Context) ([]p9p.Dir, error) {
-    if !ref.IsDir() {
-        return nil, p9p.MessageRerror{Ename: "not a directory"}
-    }
+type dirList struct {
+	dirs []p9p.Dir
+	done bool
+}
 
-    files, err := ioutil.ReadDir(ref.fullPath())
-    if err != nil {
-        return nil, err
-    }
-    var dirs []p9p.Dir
-    for _, info := range files {
-        dirs = append(dirs, dirFromInfo(info))
-    }
-    return dirs, nil
+func (d *dirList) Next(ctx context.Context) ([]p9p.Dir, error) {
+	if d.done {
+		return nil, nil
+	}
+	d.done = true
+	return d.dirs, nil
+}
+
+func (ref *FileRef) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
+	if !ref.IsDir() {
+		return nil, p9p.MessageRerror{Ename: "not a directory"}
+	}
+
+	files, err := ioutil.ReadDir(ref.fullPath())
+	if err != nil {
+		return nil, err
+	}
+	var dirs []p9p.Dir
+	for _, info := range files {
+		dirs = append(dirs, dirFromInfo(info))
+	}
+	return (&dirList{dirs, false}).Next, nil
 }
 
 func (ref *FileRef) Clunk(ctx context.Context) error {
-    return nil
+	return nil
 }
 
 func (ref *FileRef) Remove(ctx context.Context) error {
 	if ref.Path == "/" || ref.Path == "\\" {
-        return p9p.MessageRerror{Ename: "cannot remove root"}
-    }
+		return p9p.MessageRerror{Ename: "cannot remove root"}
+	}
 	return os.Remove(ref.fullPath())
 }
 
 func (ref *FileRef) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.Dirent, error) {
-    if len(names) == 0 {
-        next, err := ref.fs.newRef(ref.Path)
-        return nil, next, err
-    }
+	if len(names) == 0 {
+		next, err := ref.fs.newRef(ref.Path)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, next, err
+	}
 
-    // names is guaranteed to pass p9p.ValidPath
+	// names is guaranteed to pass p9p.ValidPath
 	newpath, err := relName(ref.Path, names...)
-    if err != nil { 
-        return nil, nil, err
-    }
-    next, err := ref.fs.newRef(newpath)
-    // TODO(frobnitzem): return qid-s corresponding to partial walk
-    if err != nil {
-        return nil, nil, err
-    }
-    qids := make([]p9p.Qid, len(names))
-    qids[len(qids)-1] = next.Qid()
-    return qids, next, err
+	if err != nil {
+		return nil, nil, err
+	}
+	next, err := ref.fs.newRef(newpath)
+	// TODO(frobnitzem): return qid-s corresponding to partial walk
+	if err != nil {
+		return nil, nil, err
+	}
+	qids := make([]p9p.Qid, len(names))
+	qids[len(qids)-1] = next.Qid()
+	return qids, next, err
 }
 
 func (ref *FileRef) Create(ctx context.Context, name string,
-                           perm uint32, mode p9p.Flag) (p9p.Dirent, error) {
-    // relName requires name to be in current dir
-    newrel, err := relName(ref.Path, name)
-    if err != nil {
-		return nil, err
-    }
+	perm uint32, mode p9p.Flag) (p9p.Dirent, p9p.File, error) {
+	// relName requires name to be in current dir
+	newrel, err := relName(ref.Path, name)
+	if err != nil {
+		return nil, nil, err
+	}
 	newpath, err := ref.fs.fullPath(newrel)
-    if err != nil {
-		return nil, err
-    }
+	if err != nil {
+		return nil, nil, err
+	}
 
-    var file *os.File
+	var f *os.File
 	switch {
 	case perm&p9p.DMDIR != 0:
 		err = os.Mkdir(newpath, os.FileMode(perm&0777))
@@ -96,22 +112,19 @@ func (ref *FileRef) Create(ctx context.Context, name string,
 		err = p9p.MessageRerror{Ename: "not implemented"}
 
 	default:
-        // TODO(frobnitzem): Stash open file somewhere, since
-        // we know create will be immediately followed by open,
-        // but only for files.
-        file, err = os.OpenFile(newpath, oflags(mode)|os.O_CREATE, os.FileMode(perm&0777))
-        file.Close()
+		f, err = os.OpenFile(newpath, oflags(mode)|os.O_CREATE, os.FileMode(perm&0777))
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var file p9p.File
+	if f != nil {
+		file = &fWrap{File: f}
+	}
+	ent, _ := ref.fs.newRef(newrel)
 
-    ent, err := ref.fs.newRef(newrel)
-    if err != nil && file != nil {
-        file.Close()
-    }
-    return ent, err
+	return ent, file, nil
 }
 
 func (ref *FileRef) Stat(ctx context.Context) (p9p.Dir, error) {
@@ -143,22 +156,22 @@ func (ref *FileRef) WStat(ctx context.Context, dir p9p.Dir) error {
 		if err != nil {
 			return err
 		}
-        if err := os.Chown(ref.fullPath(), uid, gid); err != nil {
+		if err := os.Chown(ref.fullPath(), uid, gid); err != nil {
 			return err
 		}
-    }
+	}
 
 	if dir.Name != "" {
-        var err error
-        var rel string
-        if ! path.IsAbs(dir.Name) {
-            rel = path.Join(path.Dir(ref.Path), dir.Name)
-        }
-        rel = path.Clean(rel)
+		var err error
+		var rel string
+		if !path.IsAbs(dir.Name) {
+			rel = path.Join(path.Dir(ref.Path), dir.Name)
+		}
+		rel = path.Clean(rel)
 		newpath, err := ref.fs.fullPath(rel)
-        if err != nil {
+		if err != nil {
 			return err
-        }
+		}
 		if err = syscall.Rename(ref.fullPath(), newpath); err != nil {
 			return err
 		}
@@ -198,17 +211,17 @@ func (ref *FileRef) WStat(ctx context.Context, dir p9p.Dir) error {
 }
 
 func (ref *FileRef) Open(ctx context.Context,
-                         mode p9p.Flag) (p9p.File, error) {
+	mode p9p.Flag) (p9p.File, error) {
 	f, err := os.OpenFile(ref.fullPath(), oflags(mode), 0)
 	if err != nil {
 		return nil, err
 	}
 
-    return &fWrap{File: f}, err
+	return &fWrap{File: f}, err
 }
 
 func (file *fWrap) Read(ctx context.Context, p []byte,
-                        offset int64) (n int, err error) {
+	offset int64) (n int, err error) {
 	n, err = file.File.ReadAt(p, offset)
 	if err != nil && err != io.EOF {
 		return n, err
@@ -217,7 +230,7 @@ func (file *fWrap) Read(ctx context.Context, p []byte,
 }
 
 func (file *fWrap) Write(ctx context.Context, p []byte,
-                        offset int64) (n int, err error) {
+	offset int64) (n int, err error) {
 	return file.File.WriteAt(p, offset)
 }
 
@@ -227,5 +240,5 @@ func (file *fWrap) Close(ctx context.Context) error {
 }
 
 func (_ *fWrap) IOUnit() int {
-    return 0
+	return 0
 }

@@ -26,7 +26,7 @@ func NewLogger(prefix string, session Session) Session {
 
 func (l *logging) Done(err error) error {
 	l.logger.Printf("Done(%v)", err)
-    return err
+	return err
 }
 func (l *logging) Auth(afid Fid, uname, aname string) (Qid, error) {
 	qid, err := l.session.Auth(afid, uname, aname)

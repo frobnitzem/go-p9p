@@ -42,6 +42,7 @@ Bring the server down with:
 
 TODO: write a description here...
 
+
 ## Protocol Stack
 
 This package handles the 9P protocol by implementing a stack of layers.
@@ -130,6 +131,21 @@ messages.go: `newMessage(typ FcallType) (Message, error)`
 encoding.go: `interface Codec`
   - provides Marshal, Unmarshal, and Size for converting between
     `[]byte` and 9P message structs.
+
+## Protocol stack - layer view
+
+### FSystem interface.
+
+
+
+Differences between client and server:
+
+- The server auto-generates calls to File.Close().
+  This function does nothing on the client side (use Clunk instead).
+
+- The client `qids = Walk(names...)` returns an Error/Warning when
+  Walk returns a partial, incomplete walk to the destination.
+  This happens if len(names) > 1 and walk returns len(qids) != len(names).
 
 ## Server Locking Sequences
 

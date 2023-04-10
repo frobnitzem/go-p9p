@@ -137,6 +137,8 @@ func (e *encoder) encode(vs ...interface{}) error {
 				return err
 			}
 		case time.Time:
+			// FIXME(frobnitzem): leave time as uint32
+			// and let the user deal with time zones
 			if err := e.encode(uint32(v.Unix())); err != nil {
 				return err
 			}

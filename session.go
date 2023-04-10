@@ -40,6 +40,6 @@ type Session interface {
 	// session implementation.
 	Version() (msize int, version string)
 
-    // Called at server shutdown.
-    Stop(error) error
+	// Called at server shutdown.
+	Stop(error) error
 }

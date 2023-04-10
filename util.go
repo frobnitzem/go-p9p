@@ -7,25 +7,25 @@ import "strings"
 // or if .. follows a non-..
 // Otherwise, returns the number of leading .. elements.
 func ValidPath(args []string) int {
-    n := 0
+	n := 0
 	for i, s := range args {
 		if s == "." {
-            return -1
-        } else if s == ".." {
+			return -1
+		} else if s == ".." {
 			if n != i {
 				return -1
 			}
-            n++
+			n++
 		} else {
-            if strings.ContainsAny(s, "\\/") {
-                return -1
-            }
-        }
+			if strings.ContainsAny(s, "\\/") {
+				return -1
+			}
+		}
 	}
 	return n
 }
 
-// Normalize a path by removing all '', '.', and treating
+// Normalize a path by removing all ”, '.', and treating
 // all '..' as backspaces.  The result may only
 // contain '..' elements at the beginning of the path.
 // Functional, so it effectively copies the path.
@@ -44,8 +44,8 @@ func NormalizePath(args []string) ([]string, int) {
 	lo := 0 // highest non-.. entry
 	for _, s := range args {
 		if strings.ContainsAny(s, "\\/") {
-            return nil, -1
-        }
+			return nil, -1
+		}
 		if len(s) == 0 || s == "." { // skip
 			continue
 		}

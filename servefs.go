@@ -5,6 +5,9 @@ import (
 	"sync"
 )
 
+// TODO(frobnitzem): Make these methods return errors
+// listed in errors.go where possible.
+
 type AuthFile interface {
 	File           // For read/write in auth protocols.
 	Success() bool // Was the authentication successful?
@@ -69,15 +72,15 @@ func FSession(fs FServer) Session {
 }
 
 func (sess *session) Stop(err error) error {
-    ctx := CancelledCtxt{}
-    for _, aref := range sess.auths {
-        aref.afile.Close(ctx)
-    }
-    for _, ref := range sess.refs {
-        // close and clunk
-        delRefAction(ctx, ref, false)
-    }
-    return err
+	ctx := CancelledCtxt{}
+	for _, aref := range sess.auths {
+		aref.afile.Close(ctx)
+	}
+	for _, ref := range sess.refs {
+		// close and clunk
+		delRefAction(ctx, ref, false)
+	}
+	return err
 }
 
 // Acquires a lock on the dirEnt just after successful lookup.
@@ -92,17 +95,17 @@ func (sess *session) getRef(fid Fid) (*dirEnt, error) {
 
 	ref, found := sess.refs[fid]
 	if !found {
-        sess.Unlock()
+		sess.Unlock()
 		return nil, ErrUnknownfid
 	}
-    sess.Unlock()
+	sess.Unlock()
 
 	ref.Lock()
-    // Guard against deletion just after our lookup.
-    if ref.ent == nil {
-        ref.Unlock()
-        return nil, ErrUnknownfid
-    }
+	// Guard against deletion just after our lookup.
+	if ref.ent == nil {
+		ref.Unlock()
+		return nil, ErrUnknownfid
+	}
 
 	return ref, nil
 }
@@ -180,36 +183,36 @@ func (sess *session) delRef(ctx context.Context, fid Fid,
 	sess.Lock() //         in reverse order.
 	delete(sess.refs, fid)
 	sess.Unlock()
-    defer ref.Unlock()
+	defer ref.Unlock()
 
-    return delRefAction(ctx, ref, remove)
+	return delRefAction(ctx, ref, remove)
 }
 
 func combine_errors(err, err2 error) error {
-    if err == nil {
-        return err2
-    }
-    if err2 == nil {
-        return err
-    }
-    return MessageRerror{Ename: err.Error()+"/"+err2.Error()}
+	if err == nil {
+		return err2
+	}
+	if err2 == nil {
+		return err
+	}
+	return MessageRerror{Ename: err.Error() + "/" + err2.Error()}
 }
 
 func delRefAction(ctx context.Context, ref *dirEnt, remove bool) error {
-    var err error
-    var err2 error
+	var err error
+	var err2 error
 	// If the file has been opened, we also call Close()
 	if ref.file != nil {
 		err = ref.file.Close(ctx)
-        ref.file = nil
+		ref.file = nil
 	}
 	if remove {
 		err2 = ref.ent.Remove(ctx)
 	} else {
 		err2 = ref.ent.Clunk(ctx)
 	}
-    ref.ent = nil
-    return combine_errors(err, err2)
+	ref.ent = nil
+	return combine_errors(err, err2)
 }
 
 // Creates a new auth fid.
@@ -302,10 +305,10 @@ func (sess *session) Remove(ctx context.Context, fid Fid) error {
 func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 	names ...string) ([]Qid, error) {
 
-    bsp := ValidPath(names)
-    if bsp < 0 { // check that path is normalized
-        return nil, MessageRerror{Ename: "Invalid path"}
-    }
+	bsp := ValidPath(names)
+	if bsp < 0 { // check that path is normalized
+		return nil, MessageRerror{Ename: "Non-normalized path"}
+	}
 	var qids []Qid
 	var ent Dirent // the newly discovered ent
 
@@ -353,19 +356,19 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 			err = MessageRerror{Ename: "not a directory"}
 			return nil, err
 		}
-        qids, ent, err = ref.ent.Walk(ctx, names...)
-        if err != nil {
+		qids, ent, err = ref.ent.Walk(ctx, names...)
+		if err != nil {
 			return nil, err
-        }
+		}
 		// An error walking the first path element gets propagated.
 		if len(qids) == 0 {
 			return nil, err
 		}
-    }
-    // "Only if it is equal, however, will newfid be affected"
-    if len(qids) != len(names) {
-        return qids, nil
-    }
+	}
+	// "Only if it is equal, however, will newfid be affected"
+	if len(qids) != len(names) {
+		return qids, nil
+	}
 
 	if newfid == fid {
 		// Re-use fid for result of walk.
@@ -421,58 +424,63 @@ func (sess *session) Open(ctx context.Context, fid Fid,
 	if err != nil {
 		return Qid{}, 0, err
 	}
+	defer ref.Unlock()
 
 	// TODO(frobnitzem): check open permissions here,
 	// before calling openLocked.
-	return openLocked(ctx, ref, mode)
+	err = openLocked(ctx, ref, mode)
+	if err != nil {
+		return Qid{}, 0, err
+	}
+
+	return ref.ent.Qid(), uint32(ref.file.IOUnit()), nil
 }
 
 func (_ *Readdir) IOUnit() int {
-    return 0
+	return 0
 }
 
+// Sets ref.file if successful.
 // Note: This does not check file permissions
+//
 //	before opening!  It is up to the caller.
+//
+// Should be called with ref-lock held.
+// Does not release the lock.
 func openLocked(ctx context.Context, ref *dirEnt,
-	mode Flag) (Qid, uint32, error) {
-	defer ref.Unlock()
+	mode Flag) error {
 
 	if ref.file != nil {
-		return Qid{}, 0, MessageRerror{Ename: "already open"}
+		return MessageRerror{Ename: "already open"}
 	}
 
 	var file File
+	var err error
 
 	if IsDir(ref.ent) {
-		var err error
-		var dirs []Dir
-		dirs, err = ref.ent.Entries(ctx)
+		dirs, err := ref.ent.OpenDir(ctx)
 		if err != nil {
-			return Qid{}, 0, err
+			return err
 		}
-		file = NewFixedReaddir(NewCodec(), dirs)
+		file = NewReaddir(NewCodec(), dirs)
 	} else {
-		var err error
 		file, err = ref.ent.Open(ctx, mode)
 		if err != nil {
-			return Qid{}, 0, err
+			return err
 		}
 	}
 
 	ref.file = file
-	return ref.ent.Qid(), uint32(file.IOUnit()), nil
+	return nil
 }
 
 func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	perm uint32, mode Flag) (Qid, uint32, error) {
 	var err error
 	var ref *dirEnt
-	var ent Dirent
+	var file File
 
 	fail := func(name string) (Qid, uint32, error) {
-		if ref != nil { // Successful exit retains lock (calls openLocked)
-			ref.Unlock() // so we only unlock on failure.
-		}
 		return Qid{}, 0, MessageRerror{Ename: name}
 	}
 
@@ -484,25 +492,35 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	if err != nil {
 		return fail(err.Error())
 	}
+	defer ref.Unlock()
 
 	if !IsDir(ref.ent) {
-		return fail("not a directory")
+		return fail("create in non-directory")
 	}
 
-	ent, err = ref.ent.Create(ctx, name, perm, mode)
+	ent, file, err := ref.ent.Create(ctx, name, perm, mode)
 	if err != nil {
 		return fail(err.Error())
+	}
+	if IsDir(ent) { // Do our own thing for directories.
+		next := dirEnt{ent: ent}
+		err = openLocked(ctx, &next, mode)
+		if err != nil {
+			ent.Clunk(ctx) // Note: ignoring possible multiple errors
+			return fail(err.Error())
+		}
+		file = next.file
 	}
 
 	// Success. Clean-up ref and replace with ent.
 	if ref.file != nil {
 		ref.file.Close(ctx)
-		ref.file = nil
 	}
 	ref.ent.Clunk(ctx)
 	ref.ent = ent
+	ref.file = file
 
-	return openLocked(ctx, ref, mode)
+	return ref.ent.Qid(), uint32(file.IOUnit()), nil
 }
 
 func (sess *session) Stat(ctx context.Context, fid Fid) (Dir, error) {

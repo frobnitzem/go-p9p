@@ -24,7 +24,7 @@ func ServeConn(ctx context.Context, cn net.Conn, handler Handler) error {
 	// supported version. Before we had handler, we used the session to get
 	// the version (msize, version := session.Version()).
 	// Version and message size decisions should be proxied all the way
-    // back to the origin server with declarative, set intersection logic.
+	// back to the origin server with declarative, set intersection logic.
 
 	ch := newChannel(cn, codec9p{}, DefaultMSize)
 	negctx, cancel := context.WithTimeout(ctx, 1*time.Second)
@@ -48,8 +48,8 @@ func ServeConn(ctx context.Context, cn net.Conn, handler Handler) error {
 		closed:  make(chan struct{}),
 	}
 
-    err := c.serve()
-    return handler.Stop(err)
+	err := c.serve()
+	return handler.Stop(err)
 }
 
 // conn plays role of session dispatch for handler in a server.
@@ -74,13 +74,13 @@ type activeRequest struct {
 type reqMap map[Tag]*activeRequest
 
 func (tags reqMap) remove(t Tag) bool {
-    // check if we have actually know about the requested flush
-    active, ok := tags[t]
-    if ok {
-        active.cancel() // propagate cancellation to callees
-        delete(tags, t)
-    }
-    return ok
+	// check if we have actually know about the requested flush
+	active, ok := tags[t]
+	if ok {
+		active.cancel() // propagate cancellation to callees
+		delete(tags, t)
+	}
+	return ok
 }
 
 // serve messages on the connection until an error is encountered.
@@ -91,16 +91,16 @@ func (c *conn) serve() error {
 	requests := make(chan *Fcall)  // sync, read-limited
 	responses := make(chan *Fcall) // sync, goroutine consumed
 	completed := make(chan *Fcall) // sync, send in goroutine per request
-    // completed is an internal channel used
-    // in-between completion of the server callback and
-    // responses (which are to be sent to the client)
-    // It prevents the requirement for a mutex on tags.
+	// completed is an internal channel used
+	// in-between completion of the server callback and
+	// responses (which are to be sent to the client)
+	// It prevents the requirement for a mutex on tags.
 
-    defer func() {
-        for _, active := range tags { 
-            active.cancel()
-        }
-    }()
+	defer func() {
+		for _, active := range tags {
+			active.cancel()
+		}
+	}()
 
 	// read loop
 	go c.read(requests)
@@ -124,11 +124,11 @@ func (c *conn) serve() error {
 			switch msg := req.Message.(type) {
 			case MessageTflush:
 				var resp *Fcall
-                if tags.remove(msg.Oldtag) {
-                    resp = newFcall(req.Tag, MessageRflush{})
-                } else {
-                    resp = newErrorFcall(req.Tag, ErrUnknownTag)
-                }
+				if tags.remove(msg.Oldtag) {
+					resp = newFcall(req.Tag, MessageRflush{})
+				} else {
+					resp = newErrorFcall(req.Tag, ErrUnknownTag)
+				}
 
 				select {
 				case responses <- resp:

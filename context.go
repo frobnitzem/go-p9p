@@ -30,19 +30,19 @@ func GetVersion(ctx context.Context) string {
 type CancelledCtxt struct{}
 
 func (_ CancelledCtxt) Deadline() (time.Time, bool) {
-    return time.Time{}, false
+	return time.Time{}, false
 }
 
 func (_ CancelledCtxt) Done() <-chan struct{} {
-     ch := make(chan struct{})
-     close(ch)
-     return ch
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }
 
 func (_ CancelledCtxt) Err() error {
-    return context.Canceled
+	return context.Canceled
 }
 
 func (_ CancelledCtxt) Value(key any) (val any) {
-    return nil
+	return nil
 }

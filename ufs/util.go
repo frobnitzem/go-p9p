@@ -20,7 +20,7 @@ func dirFromInfo(info os.FileInfo) p9p.Dir {
 	dir.ModTime = info.ModTime()
 	dir.MUID = "none"
 
-    if info.Mode().IsDir() {
+	if info.Mode().IsDir() {
 		dir.Qid.Type |= p9p.QTDIR
 		dir.Mode |= p9p.DMDIR
 	}

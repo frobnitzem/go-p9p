@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-    "path"
+	"path"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -30,8 +31,8 @@ func main() {
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
-    fmt.Println("Starting a pprof server on http://localhost:6060/debug/pprof.")
-    fmt.Println("See https://pkg.go.dev/net/http/pprof for details.")
+	fmt.Println("Starting a pprof server on http://localhost:6060/debug/pprof.")
+	fmt.Println("See https://pkg.go.dev/net/http/pprof for details.")
 
 	ctx := context.Background()
 	log.SetFlags(0)
@@ -60,20 +61,24 @@ func main() {
 	log.Println("9p version", version, msize)
 
 	commander := &fsCommander{
-		ctx:     context.Background(),
-		stdout:  os.Stdout,
-		stderr:  os.Stderr,
+		ctx:    context.Background(),
+		stdout: os.Stdout,
+		stderr: os.Stderr,
 	}
-    err = (&commander.fs).init(commander.ctx, csession)
-    if err != nil {
-        log.Fatal(err)
-    }
+	err = (&commander.fs).init(commander.ctx, csession)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// clone the pwd fid so we can clunk it
-    pwd, err := commander.fs.root.Walk(commander.ctx)
-    if err {
-        log.Fatal(err)
-    }
-    commander.pwd = pwd
+	_, pwd, err := commander.fs.root.Walk(commander.ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pwd1, ok := pwd.(dirEnt)
+	if !ok {
+		log.Fatal(errors.New("bad pwd"))
+	}
+	commander.pwd = pwd1
 
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem("ls"),
@@ -94,7 +99,7 @@ func main() {
 	commander.readline = rl
 
 	for {
-        pwd := strings.Join(commander.pwd.path, "/")
+		pwd := strings.Join(commander.pwd.path, "/")
 		commander.readline.SetPrompt(fmt.Sprintf("%s 🐳 > ", pwd))
 
 		line, err := rl.Readline()
@@ -130,7 +135,7 @@ func main() {
 		if err := cmd(ctx, args[1:]...); err != nil {
 			if err == p9p.ErrClosed {
 				log.Println("connection closed, shutting down")
-                csession.Stop(err)
+				csession.Stop(err)
 				return
 			}
 
@@ -141,8 +146,8 @@ func main() {
 
 // State of a filesystem as seen from the client side.
 type fsState struct {
-    session p9p.Session
-    //fids    map[*dirEnt]p9p.Fid
+	session p9p.Session
+	//fids	map[*dirEnt]p9p.Fid
 	nextfid p9p.Fid // starts at rootfid, since newFid increments, then returns
 	root    dirEnt  // what holds the rootfid
 }
@@ -151,55 +156,65 @@ type fsState struct {
 // and storing all the relevant session data.
 // Does no cleanup (assumes no old state).
 func (fs *fsState) init(ctx context.Context, session p9p.Session) error {
-    rootFid = p9p.Fid(1)
-	_, err := session.Attach(ctx, rootfid, p9p.NOFID, "anyone", "/")
-    if err != nil {
-        return err
+	rootFid := p9p.Fid(1)
+	qid, err := session.Attach(ctx, rootFid, p9p.NOFID, "anyone", "/")
+	if err != nil {
+		return err
 	}
 
-    fs.session = session
-    fs.fids = make(map[*dirEnt]p9p.Fid)
-    fs.nextfid = rootFid
-    fs.root = dirEnt{
-        path: make([]string,0),
-        depth: 0,
-        fid: rootFid,
-        fs: fs,
-    }
+	fs.session = session
+	//fs.fids = make(map[*dirEnt]p9p.Fid)
+	fs.nextfid = rootFid
+	fs.root = dirEnt{
+		path: make([]string, 0),
+		fid:  rootFid,
+		qid:  qid,
+		fs:   fs,
+	}
+	return nil
 }
 
 func (fs *fsState) newFid() p9p.Fid {
-    fs.nextfid++
-    return fs.nextfid
+	fs.nextfid++
+	return fs.nextfid
 }
 
 type Warning struct {
-    string
+	s string
 }
-func (w Warning) Error() {
-    return w
+
+func (w Warning) Error() string {
+	return w.s
 }
 
 type dirEnt struct {
-    path  []string // absolute path
-	fid   p9p.Fid
-    fs    *fsState
+	path []string // absolute path
+	fid  p9p.Fid
+	qid  p9p.Qid // FIXME(frobnitzem): stash qids here
+	fs   *fsState
 }
 
-var noEnt dirEnt = dirEnt{nil, p9p.NOFID, nil}
+var noEnt dirEnt = dirEnt{nil, p9p.NOFID, p9p.Qid{}, nil}
+
+type fileRef struct {
+	dirEnt
+	iounit int
+}
+
+var noFile fileRef = fileRef{noEnt, 0}
 
 // New entry has no path set yet!
 func (fs *fsState) newEnt() dirEnt {
-    return dirEnt{
-        fid: dir.fs.newFid(),
-        fs:  fs,
-    }
+	return dirEnt{
+		fid: fs.newFid(),
+		fs:  fs,
+	}
 }
 
 type fsCommander struct {
-	ctx     context.Context
-	pwd     dirEnt
-    fs      fsState
+	ctx context.Context
+	pwd dirEnt
+	fs  fsState
 
 	readline *readline.Instance
 	stdout   io.Writer
@@ -210,132 +225,177 @@ type fsCommander struct {
 // to Walk() in order to reach path p.
 // pwd is absolute and rel is a (potentially) relative location
 func (ent dirEnt) toWalk(p string) (dirEnt, []string, error) {
-    abs := path.IsAbs(p)
-    steps, bsp := p9p.NormalizePath(strings.Split(strings.Trim(p, "/"), "/"))
+	abs := path.IsAbs(p)
+	steps, bsp := p9p.NormalizePath(strings.Split(strings.Trim(p, "/"), "/"))
 
-    if abs {
-        if bsp != 0 {
-            return d.fs.root, nil, errors.New("invalid path: "+p)
-        }
-        return d.fs.root, steps, nil
-    }
+	if abs {
+		if bsp != 0 {
+			return ent.fs.root, nil, errors.New("invalid path: " + p)
+		}
+		return ent.fs.root, steps, nil
+	}
 
-    if bsp < 0 {
-        return ent, nil, errors.New("invalid path: "+p)
-    }
+	if bsp < 0 {
+		return ent, nil, errors.New("invalid path: " + p)
+	}
 
-    return ent, steps, nil
-}
-
-func (ent dirEnt) Clunk(ctx context.Context) error {
-    return ent.fs.session.Clunk(ctx, ent.fid)
+	return ent, steps, nil
 }
 
 // Note: This always returns returns a file with a nonzero IOUnit.
-func (ent dirEnt) Open(ctx context.Context, mode Flag) (p9p.File, error) {
-    _, iounit, err := ent.fs.session.Open(ctx, ent.fid, p9p.OREAD)
+func (ent dirEnt) Open(ctx context.Context, mode p9p.Flag) (p9p.File, error) {
+	_, iounit, err := ent.fs.session.Open(ctx, ent.fid, p9p.OREAD)
+	iou := int(iounit)
 	if iounit < 1 {
 		msize, _ := ent.fs.session.Version()
-        // size of message max minus fcall io header (Rread)
-		iounit = uint32(msize - 11)
+		// size of message max minus fcall io header (Rread)
+		iou = msize - 11
 	}
-    return fileRef{ent, iounit}, err
+	return fileRef{ent, iou}, err
 }
-type fileRef struct {
-    Ent
-    iounit int
-}
+
 func (f fileRef) Read(ctx context.Context, p []byte, offset int64) (int, error) {
-    return f.fs.session.Read(ctx, f.fid, p, offset)
+	return f.fs.session.Read(ctx, f.fid, p, offset)
 }
 func (f fileRef) Write(ctx context.Context, p []byte, offset int64) (int, error) {
-    return f.fs.session.Write(ctx, f.fid, p, offset)
+	return f.fs.session.Write(ctx, f.fid, p, offset)
 }
 func (f fileRef) IOUnit() int {
-    return f.iounit
+	return f.iounit
+}
+func (f fileRef) Close(ctx context.Context) error {
+	return nil
 }
 
 type openDir struct {
-    fileRef
-    done bool
-    nread int
-    p []byte
+	fileRef
+	done  bool
+	nread int64
+	buf   []byte
 }
 
 // Note: This always returns returns a file with a nonzero IOUnit,
 // (because dirEnt.Open does)
-func (ent dirEnt) OpenDir(ctx context.Context) (NameReader, error) {
-    file, err := ent.Open(ctx, p9p.OREAD)
+func (ent dirEnt) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
+	file, err := ent.Open(ctx, p9p.OREAD)
 	if err != nil {
-		return openDir{}, err
+		return nil, err
 	}
-    return openDir{
-        file,
-        done: false,
-        nread: 0,
-        p: make([]byte, iounit),
-    }
+	ref, ok := file.(fileRef)
+	if !ok {
+		return nil, errors.New("Invalid return value from Open")
+	}
+	dir := openDir{
+		ref,
+		false,
+		0,
+		make([]byte, file.IOUnit()),
+	}
+	return dir.Next, nil
 }
 
-func (dir openDir) Next(ctx context.Context) ([]p9p.Dir, error) {
-    if dir.done {
-        return nil, nil
-    }
-    var n int
-    var err error
+func (dir *openDir) Next(ctx context.Context) ([]p9p.Dir, error) {
+	if dir.done {
+		return nil, nil
+	}
+	var n int
+	var err error
 
-    n, err = dir.Read(ctx, p, dir.nread)
-    if err != nil {
-        return nil, err
-    }
+	n, err = dir.Read(ctx, dir.buf, dir.nread)
+	if err != nil {
+		if err == io.EOF {
+			dir.done = true
+			return nil, nil
+		}
+		return nil, err
+	}
+	dir.nread += int64(n)
 
-    rd := bytes.NewReader(file.p[:n])
-    codec := p9p.NewCodec() // TODO(stevvooe): Need way to resolve codec based on session.
-    ret := make([]p9p.Dir, 0, 10)
-    for {
-        var d p9p.Dir
-        if err = p9p.DecodeDir(codec, rd, &d); err != nil {
-            if err == io.EOF {
-                err = nil
-            }
-            break
-        }
-        ret = append(ret, d)
-    }
-    if len(ret) == 0 {
-        dir.done = true
-    }
-    dir.nread += len(ret)
-    return ret, err
+	rd := bytes.NewReader(dir.buf[:n])
+	codec := p9p.NewCodec() // TODO(stevvooe): Need way to resolve codec based on session.
+	ret := make([]p9p.Dir, 0, 10)
+	for {
+		var d p9p.Dir
+		if err = p9p.DecodeDir(codec, rd, &d); err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			break
+		}
+		ret = append(ret, d)
+	}
+	if len(ret) == 0 {
+		dir.done = true
+	}
+	return ret, err
 }
 
-func (ent dirEnt) Stat(ctx context.Context) (Dir, error) {
-    return ent.fs.session.Stat(ctx, ent.fid)
+func (ent dirEnt) Qid() p9p.Qid {
+	return ent.qid
 }
-func (ent dirEnt) WStat(ctx context.Context, stat Dir) error {
-    return ent.fs.session.WStat(ctx, ent.fid, stat)
+
+func (ent dirEnt) Create(ctx context.Context, name string,
+	perm uint32, mode p9p.Flag) (p9p.Dirent, p9p.File, error) {
+	if name == "." || name == ".." || strings.Contains(name, "/\\") {
+		return noEnt, noFile, errors.New("Invalid filename")
+	}
+	if !p9p.IsDir(ent) {
+		return noEnt, noFile, p9p.ErrCreatenondir
+	}
+	qid, iounit, err := ent.fs.session.Create(ctx, ent.fid, name, perm, mode)
+	if err != nil {
+		return noEnt, noFile, err
+	}
+	ent.path = append(ent.path, name)
+	ent.qid = qid
+
+	// TODO(frobnitzem): this appears twice, make a fileEnt function.
+	iou := int(iounit)
+	if iounit < 1 {
+		msize, _ := ent.fs.session.Version()
+		// size of message max minus fcall io header (Rread)
+		iou = msize - 11
+	}
+	return ent, fileRef{ent, iou}, err
+}
+func (ent dirEnt) Stat(ctx context.Context) (p9p.Dir, error) {
+	return ent.fs.session.Stat(ctx, ent.fid)
+}
+func (ent dirEnt) WStat(ctx context.Context, stat p9p.Dir) error {
+	return ent.fs.session.WStat(ctx, ent.fid, stat)
+}
+func (ent dirEnt) Clunk(ctx context.Context) error {
+	return ent.fs.session.Clunk(ctx, ent.fid)
+}
+func (ent dirEnt) Remove(ctx context.Context) error {
+	return ent.fs.session.Remove(ctx, ent.fid)
 }
 func (ent dirEnt) Walk(ctx context.Context,
-                       names ...string) ([]p9p.Qid, Dirent, error) {
-    steps, bsp := p9p.NormalizePath(names)
-    if bsp < 0 || bsp > len(ent.path) {
-        return nil, ent, errors.New("invalid path: "+p)
-    }
-
-    next = ent.fs.newEnt()
-    qids, err := c.session.Walk(c.ctx, ent.fid, next.fid, steps...)
-    if err != nil {
-		return nil, ent, err
+	names ...string) ([]p9p.Qid, p9p.Dirent, error) {
+	steps, bsp := p9p.NormalizePath(names)
+	if bsp < 0 || bsp > len(ent.path) {
+		return nil, ent, errors.New("invalid path: " + path.Join(names...))
 	}
-    if len(qids) != len(names) { // incomplete = failure to get new ent
-        return qids, noEnt, Warning("Incomplete walk result")
-    }
-    // drop part of ent.path
-    steps = steps[:len(qids)]
-    remain := len(ent.path) - bsp
-    next.path = append(ent.path[:remain], steps[bsp:]...)
 
-    return qids, next, nil
+	next := ent.fs.newEnt()
+	qids, err := ent.fs.session.Walk(ctx, ent.fid, next.fid, steps...)
+	if err != nil {
+		return nil, noEnt, err
+	}
+	if len(qids) != len(names) { // incomplete = failure to get new ent
+		return qids, noEnt, Warning{"Incomplete walk result"}
+	}
+	// drop part of ent.path
+	steps = steps[:len(qids)]
+	remain := len(ent.path) - bsp
+	next.path = append(ent.path[:remain], steps[bsp:]...)
+	if len(qids) > 0 {
+		next.qid = qids[len(qids)-1]
+	} else {
+		next.qid = ent.qid
+	}
+
+	return qids, next, nil
 }
 
 func (c *fsCommander) cmdls(ctx context.Context, args ...string) error {
@@ -352,40 +412,45 @@ func (c *fsCommander) cmdls(ctx context.Context, args ...string) error {
 			fmt.Fprintln(wr, p+":")
 		}
 
-        rel, steps, err := c.pwd.toWalk(p)
-        if err != nil {
-            return err
-        }
+		rel, steps, err := c.pwd.toWalk(p)
+		if err != nil {
+			return err
+		}
 
-		qid, ent, err := rel.Walk(ctx, steps...)
-        if err != nil || len(qid) != len(steps) {
+		qids, ent, err := rel.Walk(ctx, steps...)
+		if err != nil || len(qids) != len(steps) {
 			return err
 		}
 		defer ent.Clunk(ctx)
-        
-        if qid.Type&QTDIR == 0 { // non-dir.
-            d, err := ent.Stat(ctx)
-            if err != nil {
-                return err
-            }
-            fmt.Fprintf(wr, "%v\t%v\t%v\t%s\n", os.FileMode(d.Mode), d.Length, d.ModTime, d.Name)
-        } else {
-            file, err := ent.OpenDir(ctx)
-            if err != nil {
-                return err
-            }
-            defer file.Close(ctx)
 
-            for {
-                dirs, err := reader.Next(ctx)
-                if len(dirs) == 0 {
-                    break
-                }
-                for _, d := range(dirs) {
-                    fmt.Fprintf(wr, "%v\t%v\t%v\t%s\n", os.FileMode(d.Mode), d.Length, d.ModTime, d.Name)
-                }
-            }
-        }
+		//qid := ent.Qid()
+
+		if !p9p.IsDir(ent) { // non-dir.
+			d, err := ent.Stat(ctx)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(wr, "%v\t%v\t%v\t%s\n", os.FileMode(d.Mode), d.Length, d.ModTime, d.Name)
+		} else {
+			reader, err := ent.OpenDir(ctx)
+			if err != nil {
+				return err
+			}
+			//defer file.Close(ctx)
+
+			for {
+				dirs, err := reader(ctx)
+				if err != nil {
+					return err
+				}
+				if len(dirs) == 0 {
+					break
+				}
+				for _, d := range dirs {
+					fmt.Fprintf(wr, "%v\t%v\t%v\t%s\n", os.FileMode(d.Mode), d.Length, d.ModTime, d.Name)
+				}
+			}
+		}
 
 		if len(ps) > 1 {
 			fmt.Fprintln(wr, "")
@@ -407,19 +472,27 @@ func (c *fsCommander) cmdcd(ctx context.Context, args ...string) error {
 		return fmt.Errorf("cd: invalid args: %v", args)
 	}
 
-    rel, steps, err := c.pwd.toWalk(p)
-    if err {
-        return err
-    }
+	rel, steps, err := c.pwd.toWalk(p)
+	if err != nil {
+		return err
+	}
 
-    qids, next, err := rel.Walk(ctx, steps...)
-    if err != nil || len(qid) != len(steps) {
-        return err
-    }
+	qids, next, err := rel.Walk(ctx, steps...)
+	if err != nil || len(qids) != len(steps) {
+		return err
+	}
+	if !p9p.IsDir(next) {
+		next.Clunk(ctx)
+		return errors.New("cd: not a directory.")
+	}
 
-	log.Println("cd", p, c.pwd, " ~> ", next)
+	pwd1, ok := next.(dirEnt)
+	if !ok {
+		next.Clunk(ctx)
+		return errors.New("non-dir returned from walk")
+	}
 	c.pwd.Clunk(ctx)
-	c.pwd = next
+	c.pwd = pwd1
 
 	return nil
 }
@@ -429,7 +502,7 @@ func (c *fsCommander) cmdpwd(ctx context.Context, args ...string) error {
 		return fmt.Errorf("pwd takes no arguments")
 	}
 
-	fmt.Println( strings.Join(c.pwd.path, "/") )
+	fmt.Println(strings.Join(c.pwd.path, "/"))
 	return nil
 }
 
@@ -444,22 +517,22 @@ func (c *fsCommander) cmdcat(ctx context.Context, args ...string) error {
 		return fmt.Errorf("cd: invalid args: %v", args)
 	}
 
-    rel, steps, err := c.pwd.toWalk(p)
-    if err {
-        return err
-    }
+	rel, steps, err := c.pwd.toWalk(p)
+	if err != nil {
+		return err
+	}
 
-    qids, ent, err := rel.Walk(ctx, steps...)
-    if err != nil || len(qids) != len(steps) {
-        return err
-    }
+	qids, ent, err := rel.Walk(ctx, steps...)
+	if err != nil || len(qids) != len(steps) {
+		return err
+	}
 	defer ent.Clunk(ctx)
 
 	file, err := ent.Open(ctx, p9p.OREAD)
 	if err != nil {
 		return err
 	}
-    defer file.Close(ctx)
+	//defer file.Close(ctx)
 
 	b := make([]byte, file.IOUnit())
 
