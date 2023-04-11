@@ -24,6 +24,8 @@ type Codec interface {
 }
 
 // NewCodec returns a new, standard 9P2000 codec, ready for use.
+// TODO(frobnitzem): enforce no extensions (e.g. 9P2000.u)
+// at protocol level
 func NewCodec() Codec {
 	return codec9p{}
 }
@@ -135,6 +137,8 @@ func (e *encoder) encode(vs ...interface{}) error {
 				return err
 			}
 		case time.Time:
+			// FIXME(frobnitzem): leave time as uint32
+			// and let the user deal with time zones
 			if err := e.encode(uint32(v.Unix())); err != nil {
 				return err
 			}

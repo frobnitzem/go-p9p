@@ -42,6 +42,7 @@ Bring the server down with:
 
 TODO: write a description here...
 
+
 ## Protocol Stack
 
 This package handles the 9P protocol by implementing a stack of layers.
@@ -63,15 +64,28 @@ and session encryption is on the TODO list.
 
 ### Server Stack
 
+servefs.go: FSession(fs FServer) Session
+  - Creates a Session type from an FServer
+  - The FServer represents a fileserver broken into 3 levels,
+    AuthFile-s, Dirent-s, and Files
+  - Rather than track Fid-s, calls to Dirent-s create
+    more Dirent and Files.
+
 dispatcher.go: `Dispatch(session Session) Handler`
-  - runs a function call (from Session) for each type of messages.go:Message
-    (does not see TFlush, but has ctx instead)
+  - Delegates each type of messages.go:Message to a
+    function call (from Session).
+  - Tags and TFlush-s are handled at this level,
+    so higher levels do not see them.  Instead, they see 
+    context.Context objects to indicate potential cancellation.
 
-server.go: `ServeConn(ctx context.Context, cn net.Conn, handler Handler) error`
-  - negotiates protocol (with a timeout of 1 second)
-  - calls server loop, reading messages and sending them to the handler
+serveconn.go: `ServeConn(ctx context.Context, cn net.Conn, handler Handler) error`
+  - Negotiates protocol (with a timeout of 1 second).
+  - Calls server loop, reading messages and sending them to the handler.
+  - Version messages are handled at this level.  They
+    have the effect of deleting the current session
+    and starting a new one. (Note: Check this to be sure.)
 
-server.go: `(c *conn) serve() error`
+serverconn.go: `(c *conn) serve() error`
   - Server loop, strips Tags and TFlush messages
   - details:
       - runs reader and writer goroutines
@@ -118,10 +132,75 @@ encoding.go: `interface Codec`
   - provides Marshal, Unmarshal, and Size for converting between
     `[]byte` and 9P message structs.
 
+## Protocol stack - layer view
+
+### FSystem interface.
+
+
+
+Differences between client and server:
+
+- The server auto-generates calls to File.Close().
+  This function does nothing on the client side (use Clunk instead).
+
+- The client `qids = Walk(names...)` returns an Error/Warning when
+  Walk returns a partial, incomplete walk to the destination.
+  This happens if len(names) > 1 and walk returns len(qids) != len(names).
+
+## Server Locking Sequences
+
+Lookup a Fid:
+
+0. assert Fid != NOFID
+1. lock session, lookup fid, unlock session
+2. lock ref
+   - This ensures that the ref was unlocked at some past point.
+3. if ref.ent == nil, fid is being deleted, unlock and
+   return "no fid"
+4. return ref in locked state
+   - Client unlocks when they are done with operation on Fid.
+   - This forces no parallel operations on Fid at all.
+   - Convention: clone fids if you want parallel access.
+
+Clunk/Remove a Fid:
+
+1. lock session, lookup fid, unlock session
+2. lock ref, lock session, delete fid:ref, unlock session, unlock ref
+3. close if ref.file != nil
+4. clunk/remove ref.ent
+   - This doesn't work because we may get multiple Walk/Open/Stat
+     requests in parallel with Clunk. We need a way to stop
+     those actions, then clunk.
+
+Auth:
+
+1. lock session, lookup afid (ensure not present),
+   create locked aref, store afid:aref, unlock session
+2. call Auth function to set aref.afile
+3. unlock afid
+
+Attach:
+
+1. if fs.RequireAuth()):
+  a. lock session, lookup aref, unlock session
+  b. lock aref, call ok := aref.afile.Success(), unlock aref
+  c. assert ok
+2. ref := holdRef [lock session, lookup fid (ensure not present),
+                   create locked ref, store afid:aref, unlock session]
+3. ent, err := Root()
+4. if err { lock session, delete fid:ref, unlock session, return }
+5. set ref.ent = ent, unlock ref
+
+Note:
+Rather than using a locked fid lookup table, we could have
+the dispatcher do fid lookups, and send requests on a channel
+dedicated to (a goroutine) serving only that fid.  This may be
+an optimization, or it may not - only lots of work and profiling
+will tell.  So, this has not been tried.
+
 ## Copyright and license
 
 Copyright © 2015 Docker, Inc.
 Copyright © 2023 UT-Battelle LLC.
 go-p9p is licensed under the Apache License,
 Version 2.0. See [LICENSE](LICENSE) for the full license text.
-

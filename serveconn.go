@@ -15,13 +15,16 @@ import (
 // servers.
 
 // ServeConn the 9p handler over the provided network connection.
+// When the connection encounters an error or disconnects, this
+// returns the value of handler.Stop(err).
+// TODO(frobnitzem): Ensure unexpected version messages are handled correctly.
 func ServeConn(ctx context.Context, cn net.Conn, handler Handler) error {
 
 	// TODO(stevvooe): It would be nice if the handler could declare the
 	// supported version. Before we had handler, we used the session to get
-	// the version (msize, version := session.Version()). We must decided if
-	// we want to proxy version and message size decisions all the back to the
-	// origin server or make those decisions at each link of a proxy chain.
+	// the version (msize, version := session.Version()).
+	// Version and message size decisions should be proxied all the way
+	// back to the origin server with declarative, set intersection logic.
 
 	ch := newChannel(cn, codec9p{}, DefaultMSize)
 	negctx, cancel := context.WithTimeout(ctx, 1*time.Second)
@@ -45,7 +48,8 @@ func ServeConn(ctx context.Context, cn net.Conn, handler Handler) error {
 		closed:  make(chan struct{}),
 	}
 
-	return c.serve()
+	err := c.serve()
+	return handler.Stop(err)
 }
 
 // conn plays role of session dispatch for handler in a server.
@@ -67,13 +71,36 @@ type activeRequest struct {
 	cancel  context.CancelFunc
 }
 
+type reqMap map[Tag]*activeRequest
+
+func (tags reqMap) remove(t Tag) bool {
+	// check if we have actually know about the requested flush
+	active, ok := tags[t]
+	if ok {
+		active.cancel() // propagate cancellation to callees
+		delete(tags, t)
+	}
+	return ok
+}
+
 // serve messages on the connection until an error is encountered.
+// cancels all server callbacks when exiting
 func (c *conn) serve() error {
-	tags := map[Tag]*activeRequest{} // active requests
+	tags := reqMap{} // active requests
 
 	requests := make(chan *Fcall)  // sync, read-limited
 	responses := make(chan *Fcall) // sync, goroutine consumed
 	completed := make(chan *Fcall) // sync, send in goroutine per request
+	// completed is an internal channel used
+	// in-between completion of the server callback and
+	// responses (which are to be sent to the client)
+	// It prevents the requirement for a mutex on tags.
+
+	defer func() {
+		for _, active := range tags {
+			active.cancel()
+		}
+	}()
 
 	// read loop
 	go c.read(requests)
@@ -97,11 +124,7 @@ func (c *conn) serve() error {
 			switch msg := req.Message.(type) {
 			case MessageTflush:
 				var resp *Fcall
-				// check if we have actually know about the requested flush
-				active, ok := tags[msg.Oldtag]
-				if ok {
-					active.cancel() // propagate cancellation to callees
-					delete(tags, msg.Oldtag)
+				if tags.remove(msg.Oldtag) {
 					resp = newFcall(req.Tag, MessageRflush{})
 				} else {
 					resp = newErrorFcall(req.Tag, ErrUnknownTag)
@@ -129,9 +152,6 @@ func (c *conn) serve() error {
 				}
 
 				go func(ctx context.Context, req *Fcall) {
-					// TODO(stevvooe): Re-write incoming Treads so that handler
-					// can always respond with a message of the correct msize.
-
 					var resp *Fcall
 					msg, err := c.handler.Handle(ctx, req.Message)
 					if err != nil {

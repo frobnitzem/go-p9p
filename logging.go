@@ -16,7 +16,7 @@ type logging struct {
 var _ Session = &logging{}
 
 // Wrap a Session, producing log messages to os.Stdout
-// whenever Auth, Attach, and Remove are called.
+// whenever Auth, Attach, Remove, and Done are called.
 func NewLogger(prefix string, session Session) Session {
 	return &logging{
 		session: session,
@@ -24,6 +24,10 @@ func NewLogger(prefix string, session Session) Session {
 	}
 }
 
+func (l *logging) Done(err error) error {
+	l.logger.Printf("Done(%v)", err)
+	return err
+}
 func (l *logging) Auth(afid Fid, uname, aname string) (Qid, error) {
 	qid, err := l.session.Auth(afid, uname, aname)
 	l.logger.Printf("Auth(%v, %s, %s) -> (%v, %v)", afid, uname, aname, qid, err)

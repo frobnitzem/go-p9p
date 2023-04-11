@@ -1,6 +1,7 @@
 # go-p9p maintainers file
 #
-# This file describes who runs the docker/go-p9p project and how.
+# This file describes who runs the frobnitzem/go-p9p project and how.
+#
 # This is a living document - if you see something out of date or missing, speak up!
 #
 # It is structured to be consumable by both humans and programs.
@@ -11,17 +12,12 @@
 [Org]
 	[Org."Core maintainers"]
 		people = [
-			"aduermael",
-			"djs55",
-			"FrenchBen",
-			"justincormack",
-			"stevvooe",
+			"frobnitzem",
 		]
 
 	[Org."Docs maintainers"]
-
 		people = [
-			"thajeztah"
+			"frobnitzem"
 		]
 
 [people]
@@ -61,3 +57,8 @@
 	Name = "Sebastiaan van Stijn"
 	Email = "github@gone.nl"
 	GitHub = "thaJeztah"
+
+	[people.frobnitzem]
+	Name = "David M. Rogers"
+	Email = "predictivestatmech@gmail.com"
+	GitHub = "frobnitzem"

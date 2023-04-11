@@ -2,10 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"strings"
-	"fmt"
 
 	"github.com/frobnitzem/go-p9p"
 	"github.com/frobnitzem/go-p9p/ufs"
@@ -15,19 +17,29 @@ import (
 var (
 	root string
 	addr string
+	perf bool
 )
 
 func init() {
-	flag.StringVar(&root, "root", "~/", "root of filesystem to serve over 9p")
-	flag.StringVar(&addr, "addr", ":5640", "bind addr for 9p server, prefix with unix: for unix socket")
+	flag.StringVar(&root, "root", "/tmp", "root of filesystem to serve over 9p")
+	flag.StringVar(&addr, "addr", "localhost:5640", "bind addr for 9p server, prefix with unix: for unix socket")
+	flag.BoolVar(&perf, "perf", false, "Run a performance profile server?")
 }
 
 func main() {
 	ctx := context.Background()
 	log.SetFlags(0)
 	flag.Parse()
-    fmt.Println("Serving ", root, " at ", addr);
 
+	if perf {
+		fmt.Println("Starting a pprof server on http://localhost:6060/debug/pprof")
+		fmt.Println("See https://pkg.go.dev/net/http/pprof for details.")
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
+
+	fmt.Println("Serving ", root, " at ", addr)
 	proto := "tcp"
 	if strings.HasPrefix(addr, "unix:") {
 		proto = "unix"
@@ -52,11 +64,7 @@ func main() {
 
 			ctx := context.WithValue(ctx, "conn", conn)
 			log.Println("connected", conn.RemoteAddr())
-			session, err := ufs.NewSession(ctx, root)
-			if err != nil {
-				log.Println("error creating session")
-				return
-			}
+			session := p9p.FSession(ufs.NewServer(ctx, root))
 
 			if err := p9p.ServeConn(ctx, conn, p9p.Dispatch(session)); err != nil {
 				log.Printf("serving conn: %v", err)
