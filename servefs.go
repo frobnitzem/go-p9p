@@ -8,17 +8,6 @@ import (
 // TODO(frobnitzem): Make these methods return errors
 // listed in errors.go where possible.
 
-type AuthFile interface {
-	File           // For read/write in auth protocols.
-	Success() bool // Was the authentication successful?
-}
-
-type FServer interface {
-	RequireAuth() bool
-	Auth(ctx context.Context, uname, aname string) AuthFile
-	Attach(ctx context.Context, uname, aname string, af AuthFile) (Dirent, error)
-}
-
 // Internal representation of a Dirent
 // File is nil unless Open has been called.
 //
@@ -219,12 +208,13 @@ func delRefAction(ctx context.Context, ref *dirEnt, remove bool) error {
 // These aref-s are locked until the afile is established.
 func (sess *session) Auth(ctx context.Context, afid Fid,
 	uname, aname string) (Qid, error) {
-	aq := Qid{Type: QTAUTH, Version: uint32(afid)}
+	// Can't close/clunk an afid, so the path will be unique.
+	aq := Qid{Type: QTAUTH, Path: uint64(afid)}
 
-	if afid == NOFID { // no-op
+	if afid == NOFID { // not in spec, but treat as a no-op
 		return aq, nil
 	}
-	if !sess.fs.RequireAuth() {
+	if !sess.fs.RequireAuth(ctx) {
 		return aq, MessageRerror{Ename: "no auth"}
 	}
 
@@ -235,14 +225,27 @@ func (sess *session) Auth(ctx context.Context, afid Fid,
 		return aq, ErrDupfid
 	}
 	aref := &authEnt{uname: uname, aname: aname}
+
 	aref.Lock()
 	sess.auths[afid] = aref
 	sess.Unlock()
 
-	aref.afile = sess.fs.Auth(ctx, uname, aname)
+	var err error
+	aref.afile, err = sess.fs.Auth(ctx, uname, aname)
+	if err != nil { // need to re-acquire session lock to delete
+		aref.afile = nil
+	}
 	aref.Unlock()
 
-	return aq, nil
+	if err != nil {
+		sess.Lock()
+		aref.Lock()
+		delete(sess.auths, afid)
+		aref.Unlock()
+		sess.Unlock()
+	}
+
+	return aq, err
 }
 
 func (sess *session) Attach(ctx context.Context, fid, afid Fid,
@@ -255,25 +258,27 @@ func (sess *session) Attach(ctx context.Context, fid, afid Fid,
 	var aref *authEnt
 	var af AuthFile
 
-	// Auth was required. Check the AuthFile.
-	if sess.fs.RequireAuth() {
+	if afid != NOFID {
 		sess.Lock()
 		var found bool
 		aref, found = sess.auths[afid]
-		if !found {
-			sess.Unlock()
-			return Qid{}, MessageRerror{Ename: "auth required"}
-		}
 		sess.Unlock()
+		if !found {
+			return Qid{}, ErrUnknownfid
+		}
 
-		aref.Lock() // acquiring guarantees afile is present
+		aref.Lock() // acquiring in non-nil state guarantees afile is present
+		if aref.afile == nil {
+			aref.Unlock()
+			return Qid{}, ErrUnknownfid
+		}
 		ok := aref.afile.Success()
+		af = aref.afile
 		aref.Unlock()
 
 		if !ok {
 			return Qid{}, MessageRerror{Ename: "unauthorized"}
 		}
-		af = aref.afile
 	}
 
 	ref, err := sess.holdRef(fid)

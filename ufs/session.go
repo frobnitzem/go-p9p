@@ -95,11 +95,12 @@ func NewServer(ctx context.Context, root string) p9p.FServer {
 	}
 }
 
-func (fs *fServer) RequireAuth() bool {
+func (_ *fServer) RequireAuth(_ context.Context) bool {
 	return false
 }
-func (fs *fServer) Auth(ctx context.Context, uname, aname string) p9p.AuthFile {
-	return nil
+func (fs *fServer) Auth(ctx context.Context,
+	uname, aname string) (p9p.AuthFile, error) {
+	return nil, nil
 }
 func (fs *fServer) Attach(ctx context.Context, uname, aname string,
 	af p9p.AuthFile) (p9p.Dirent, error) {

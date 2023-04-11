@@ -66,17 +66,13 @@ func main() {
 	}
 	log.Println("9p version", version, msize)
 
-	commander := &fsCommander{
-		ctx:    context.Background(),
-		stdout: os.Stdout,
-		stderr: os.Stderr,
-	}
-	err = (&commander.fs).init(commander.ctx, csession)
+	fs := FSclient(csession)
+	root, err := fs.Attach(ctx, "anonymous", "/", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// clone the pwd fid so we can clunk it
-	_, pwd, err := commander.fs.root.Walk(commander.ctx)
+	_, pwd, err := root.Walk(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -84,7 +80,13 @@ func main() {
 	if !ok {
 		log.Fatal(errors.New("bad pwd"))
 	}
-	commander.pwd = pwd1
+	commander := &fsCommander{
+		ctx:    ctx,
+		stdout: os.Stdout,
+		stderr: os.Stderr,
+		root:   root,
+		pwd:    pwd1,
+	}
 
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem("ls"),
@@ -154,30 +156,79 @@ func main() {
 type fsState struct {
 	session p9p.Session
 	//fids	map[*dirEnt]p9p.Fid
-	nextfid p9p.Fid // starts at rootfid, since newFid increments, then returns
+	nextfid p9p.Fid // newFid increments, then returns
 	root    dirEnt  // what holds the rootfid
+}
+
+func FSclient(session p9p.Session) p9p.FServer {
+	return &fsState{session: session, nextfid: p9p.Fid(0)}
+}
+
+// AuthFile interface
+type aFile struct {
+	session p9p.Session
+	fid p9p.Fid
+	success bool
+}
+var noAuth aFile = aFile{nil, p9p.NOFID, false}
+func (af aFile) Success() bool {
+	return af.success
+}
+func (af aFile) Read(ctx context.Context, p []byte, offset int64) (int, error) {
+	return af.session.Read(ctx, af.fid, p, offset)
+}
+func (af aFile) Write(ctx context.Context, p []byte, offset int64) (int, error) {
+	return af.session.Write(ctx, af.fid, p, offset)
+}
+func (_ aFile) Close(ctx context.Context) error {
+	return nil
+}
+func (af aFile) IOUnit() {
+	msize, version := af.session.Version()
+	return msize-11
+}
+
+// Attempt a NOFID auth.
+func (fs *fsState) RequireAuth(ctx context.Context) bool {
+	_, err := fs.session.Auth(ctx, p9p.NOFID, "anonymous", "/")
+	return err != nil
+}
+func (fs *fsState) Auth(ctx context.Context, uname, aname string
+							) (9p.AuthFile, error) {
+	aFid := fs.newFid()
+	_, err := fs.session.Auth(ctx, aFid, uname, aname)
+	if err != nil {
+		return noAuth, err
+	}
+	return aFile(aFid), nil
 }
 
 // Initializes a session by sending an Attach,
 // and storing all the relevant session data.
 // Does no cleanup (assumes no old state).
-func (fs *fsState) init(ctx context.Context, session p9p.Session) error {
-	rootFid := p9p.Fid(1)
-	qid, err := session.Attach(ctx, rootFid, p9p.NOFID, "anyone", "/")
-	if err != nil {
-		return err
+func (fs *fsState) Attach(ctx context.Context, uname, aname string,
+							af p9p.AuthFile) (p9p.Dirent, error) {
+	rootFid := fs.newFid()
+
+	aFid p9p.Fid
+	if af == nil {
+		aFid = p9p.NOFID
+	} else {
+		aFid = af.fid
 	}
 
-	fs.session = session
+	qid, err := fs.session.Attach(ctx, rootFid, aFid, uname, aname)
+	if err != nil {
+		return noEnt, err
+	}
+
 	//fs.fids = make(map[*dirEnt]p9p.Fid)
-	fs.nextfid = rootFid
-	fs.root = dirEnt{
+	return dirEnt{
 		path: make([]string, 0),
 		fid:  rootFid,
 		qid:  qid,
 		fs:   fs,
-	}
-	return nil
+	}, nil
 }
 
 func (fs *fsState) newFid() p9p.Fid {
@@ -218,9 +269,9 @@ func (fs *fsState) newEnt() dirEnt {
 }
 
 type fsCommander struct {
-	ctx context.Context
-	pwd dirEnt
-	fs  fsState
+	ctx  context.Context
+	pwd  dirEnt
+	root Dirent
 
 	readline *readline.Instance
 	stdout   io.Writer

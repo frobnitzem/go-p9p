@@ -2,6 +2,17 @@ package p9p
 
 import "context"
 
+type FServer interface {
+	RequireAuth(ctx context.Context) bool
+	Auth(ctx context.Context, uname, aname string) (AuthFile, error)
+	Attach(ctx context.Context, uname, aname string, af AuthFile) (Dirent, error)
+}
+
+type AuthFile interface {
+	File           // For read/write in auth protocols.
+	Success() bool // Was the authentication successful?
+}
+
 // Simplified interface to a file that has been Open-ed.
 type File interface {
 	Read(ctx context.Context, p []byte, offset int64) (int, error)

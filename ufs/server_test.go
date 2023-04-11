@@ -66,7 +66,10 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		assert.True(qid.Type&p9p.QTAUTH != 0)
 	}
-	qid, err = session.Attach(ctx, fid0, fid100, "user1", "/")
+	_, err = session.Attach(ctx, fid0, fid100, "user1", "/")
+	assert.NotNil(err)
+
+	qid, err = session.Attach(ctx, fid0, p9p.NOFID, "user1", "/")
 	assert.Nil(err)
 	if err != nil {
 		assert.True(qid.Type&p9p.QTDIR != 0)
