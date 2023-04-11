@@ -21,18 +21,24 @@ import (
 	"golang.org/x/net/context"
 )
 
-var addr string
+var (
+	addr string
+	perf bool
+)
 
 func init() {
 	flag.StringVar(&addr, "addr", "localhost:5640", "addr of 9p service")
+	flag.BoolVar(&perf, "perf", false, "Run a performance profile server?")
 }
 
 func main() {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-	fmt.Println("Starting a pprof server on http://localhost:6060/debug/pprof.")
-	fmt.Println("See https://pkg.go.dev/net/http/pprof for details.")
+	if perf {
+		fmt.Println("Starting a pprof server on http://localhost:6060/debug/pprof")
+		fmt.Println("See https://pkg.go.dev/net/http/pprof for details.")
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 
 	ctx := context.Background()
 	log.SetFlags(0)

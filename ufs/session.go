@@ -62,9 +62,11 @@ func (ref FileRef) fullPath() string {
 //
 // On success, the result is always a valid internal path.
 func relName(dir string, names ...string) (string, error) {
-	depth := strings.Count(dir, "/") - 1
+	depth := strings.Count(dir[:len(dir)-1], "/")
 	bsp := p9p.ValidPath(names)
 	if bsp < 0 || bsp > depth {
+		//fmt.Println("Invalid path: ", strings.Join(names, "/"))
+		//fmt.Println("dir: ", dir, "depth: ", depth, " bsp: ", bsp)
 		return dir, p9p.MessageRerror{Ename: "Invalid path"}
 	}
 
@@ -99,7 +101,7 @@ func (fs *fServer) RequireAuth() bool {
 func (fs *fServer) Auth(ctx context.Context, uname, aname string) p9p.AuthFile {
 	return nil
 }
-func (fs *fServer) Root(ctx context.Context, uname, aname string,
+func (fs *fServer) Attach(ctx context.Context, uname, aname string,
 	af p9p.AuthFile) (p9p.Dirent, error) {
 	return fs.newRef("/")
 }

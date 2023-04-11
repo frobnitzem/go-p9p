@@ -16,7 +16,7 @@ type AuthFile interface {
 type FServer interface {
 	RequireAuth() bool
 	Auth(ctx context.Context, uname, aname string) AuthFile
-	Root(ctx context.Context, uname, aname string, af AuthFile) (Dirent, error)
+	Attach(ctx context.Context, uname, aname string, af AuthFile) (Dirent, error)
 }
 
 // Internal representation of a Dirent
@@ -281,7 +281,7 @@ func (sess *session) Attach(ctx context.Context, fid, afid Fid,
 		return Qid{}, err
 	}
 
-	ent, err := sess.fs.Root(ctx, uname, aname, af)
+	ent, err := sess.fs.Attach(ctx, uname, aname, af)
 	if err != nil {
 		sess.Lock()
 		delete(sess.refs, fid)
