@@ -69,7 +69,7 @@ func (ref *FileRef) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.D
 	if len(names) == 0 {
 		next, err := ref.fs.newRef(ref.Path)
 		if err != nil {
-			return nil, nil, err
+			next = nil
 		}
 		return nil, next, err
 	}
@@ -97,7 +97,7 @@ func (ref *FileRef) Create(ctx context.Context, name string,
 		return nil, nil, err
 	}
 	newpath, err := ref.fs.fullPath(newrel)
-	if err != nil {
+	if err != nil { // should always succeed
 		return nil, nil, err
 	}
 
@@ -118,11 +118,18 @@ func (ref *FileRef) Create(ctx context.Context, name string,
 	if err != nil {
 		return nil, nil, err
 	}
+	ent, err := ref.fs.newRef(newrel)
+	if err != nil { // may fail if stat fails.
+		if f != nil {
+			f.Close()
+		}
+		return nil, nil, err
+	}
+
 	var file p9p.File
 	if f != nil {
 		file = &fWrap{File: f}
 	}
-	ent, _ := ref.fs.newRef(newrel)
 
 	return ent, file, nil
 }
@@ -164,10 +171,11 @@ func (ref *FileRef) WStat(ctx context.Context, dir p9p.Dir) error {
 	if dir.Name != "" {
 		var err error
 		var rel string
-		if !path.IsAbs(dir.Name) {
+		if path.IsAbs(dir.Name) {
+			rel = path.Clean(rel)
+		} else {
 			rel = path.Join(path.Dir(ref.Path), dir.Name)
 		}
-		rel = path.Clean(rel)
 		newpath, err := ref.fs.fullPath(rel)
 		if err != nil {
 			return err

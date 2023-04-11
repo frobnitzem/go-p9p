@@ -2,6 +2,7 @@ package p9p
 
 import (
 	"github.com/stretchr/testify/assert"
+	"path"
 	"testing"
 )
 
@@ -22,14 +23,16 @@ func TestValid(t *testing.T) {
 func TestNormalize(t *testing.T) {
 	assert := assert.New(t)
 
-	path, n := NormalizePath([]string{"a", "b", "/"})
+	p, n := NormalizePath([]string{"a", "b", "/"})
 	assert.Equal(-1, n)
-	path, n = NormalizePath([]string{"x", "z\\"})
+	p, n = NormalizePath([]string{"x", "z\\"})
 	assert.Equal(-1, n)
-	path, n = NormalizePath([]string{"x", "..", "y", ".", "z"})
+	p, n = NormalizePath([]string{"x", "..", "y", ".", "z"})
 	assert.Equal(0, n)
-	assert.Equal(path, []string{"y", "z"})
-	path, n = NormalizePath([]string{"x", "..", "..", "y", "", "z.npy"})
+	assert.Equal(p, []string{"y", "z"})
+	p, n = NormalizePath([]string{"x", "..", "..", "y", "", "z.npy"})
 	assert.Equal(1, n)
-	assert.Equal(path, []string{"..", "y", "z.npy"})
+	assert.Equal(p, []string{"..", "y", "z.npy"})
+
+	assert.Equal(path.Join("/x", ".."), "/")
 }

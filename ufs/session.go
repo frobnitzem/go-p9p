@@ -15,13 +15,14 @@ type fServer struct {
 	rootRef FileRef
 }
 
-// invariants:
+// Internal path invariants:
 //
-//	Path always begins with '/'
-//	Path never contains . or .. components
+//   - Path always begins with "/".
+//   - Path does not contain any "\\" characters.
+//   - Path never contains "." or ".." or "" (empty) elements.
 type FileRef struct {
 	fs   *fServer
-	Path string // Unix-separated path, relative to root
+	Path string // This is an *internal path*.
 	Info p9p.Dir
 }
 
@@ -29,41 +30,51 @@ type FileRef struct {
 // referencing the underlying system.  They ensure
 // we only access files inside our domain.
 
-// Return the system's underlying path for the
-// absolute path, p (within the server's domain).
+// Return the system's underlying path for the internal path, p.
+//
+// Assumes fs.Base is a valid full-path on the
+// host filesystem.  Validates the argument, p.
 func (fs *fServer) fullPath(p string) (string, error) {
-	if strings.Contains(p, "\\") {
+	if !path.IsAbs(p) || strings.Contains(p, "\\") {
 		return "", p9p.MessageRerror{Ename: "Invalid path"}
 	}
-	rel := path.Clean(p) // removes ../ at root.
-	return filepath.Join(fs.Base, filepath.FromSlash(rel)), nil
+	if path.Clean(p) != p { // removes ../ at root.
+		return "", p9p.MessageRerror{Ename: "Invalid path"}
+	}
+	return filepath.Join(fs.Base, filepath.FromSlash(p)), nil
 }
 
 // Return the system's underlying path for the ref.
-func (ref *FileRef) fullPath() string {
+// Assumes fs.Base is a valid full-path on the
+// host filesystem.  Also assumes ref.Path is
+// a valid internal path.
+func (ref FileRef) fullPath() string {
 	return filepath.Join(ref.fs.Base, filepath.FromSlash(ref.Path))
 }
 
 // Find the absolute path of names relative to dir.
-// dir must be an absolute (Unix-convention) path.
-// names cannot contain filepath separators (checked by p9p.ValidPath).
+//
+// dir must be a valid internal path.
+// names are validated.  They are not re-ordered
+// or changed (e.g. to process "a/../" etc.), so
+// names that contain ".", "", or non-".." before ".."
+// will return an error.
+//
+// On success, the result is always a valid internal path.
 func relName(dir string, names ...string) (string, error) {
 	depth := strings.Count(dir, "/") - 1
 	bsp := p9p.ValidPath(names)
-	if bsp > depth {
+	if bsp < 0 || bsp > depth {
 		return dir, p9p.MessageRerror{Ename: "Invalid path"}
 	}
 
 	return path.Join(dir, path.Join(names...)), nil
 }
 
-// Create a new *FileRef pointing to absolute path, p
+// Create a new FileRef pointing to absolute path, p
+// p must be a valid internal path, or else an
+// error is returned (checked by fullPath function).
 func (fs *fServer) newRef(p string) (*FileRef, error) {
-	if !path.IsAbs(p) {
-		return nil, p9p.MessageRerror{Ename: "Invalid path"}
-	}
-	// Normalizes, and removes any leading ../
-	p = path.Clean(p)
 	fpath, err := fs.fullPath(p)
 	if err != nil {
 		return nil, err
