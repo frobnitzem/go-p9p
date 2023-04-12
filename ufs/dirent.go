@@ -3,7 +3,6 @@ package ufs
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path"
@@ -12,10 +11,6 @@ import (
 
 	p9p "github.com/frobnitzem/go-p9p"
 )
-
-type fWrap struct {
-	File *os.File
-}
 
 func (f *FileRef) IsDir() bool {
 	return f.Info.Mode&p9p.DMDIR > 0
@@ -43,22 +38,29 @@ func (ref *FileRef) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 		return nil, p9p.MessageRerror{Ename: "not a directory"}
 	}
 
-	files, err := ioutil.ReadDir(ref.fullPath())
+	files, err := os.ReadDir(ref.fullPath())
 	if err != nil {
 		return nil, err
 	}
 	var dirs []p9p.Dir
 	for _, info := range files {
-		dirs = append(dirs, dirFromInfo(info))
+		d, err := dirFromEntry(info)
+		if err == nil {
+			dirs = append(dirs, d)
+		}
 	}
 	return (&dirList{dirs, false}).Next, nil
 }
 
 func (ref *FileRef) Clunk(ctx context.Context) error {
+	if ref.file != nil {
+		return ref.file.Close()
+	}
 	return nil
 }
 
 func (ref *FileRef) Remove(ctx context.Context) error {
+	ref.Clunk(ctx)
 	if ref.Path == "/" || ref.Path == "\\" {
 		return p9p.MessageRerror{Ename: "cannot remove root"}
 	}
@@ -101,7 +103,7 @@ func (ref *FileRef) Create(ctx context.Context, name string,
 		return nil, nil, err
 	}
 
-	var f *os.File
+	var file *os.File
 	switch {
 	case perm&p9p.DMDIR != 0:
 		err = os.Mkdir(newpath, os.FileMode(perm&0777))
@@ -112,7 +114,7 @@ func (ref *FileRef) Create(ctx context.Context, name string,
 		err = p9p.MessageRerror{Ename: "not implemented"}
 
 	default:
-		f, err = os.OpenFile(newpath, oflags(mode)|os.O_CREATE, os.FileMode(perm&0777))
+		file, err = os.OpenFile(newpath, oflags(mode)|os.O_CREATE, os.FileMode(perm&0777))
 	}
 
 	if err != nil {
@@ -120,18 +122,17 @@ func (ref *FileRef) Create(ctx context.Context, name string,
 	}
 	ent, err := ref.fs.newRef(newrel)
 	if err != nil { // may fail if stat fails.
-		if f != nil {
-			f.Close()
+		if file != nil {
+			file.Close()
 		}
 		return nil, nil, err
 	}
 
-	var file p9p.File
-	if f != nil {
-		file = &fWrap{File: f}
+	if file != nil {
+		ent.file = file
 	}
 
-	return ent, file, nil
+	return ent, ent, nil
 }
 
 func (ref *FileRef) Stat(ctx context.Context) (p9p.Dir, error) {
@@ -220,33 +221,28 @@ func (ref *FileRef) WStat(ctx context.Context, dir p9p.Dir) error {
 
 func (ref *FileRef) Open(ctx context.Context,
 	mode p9p.Flag) (p9p.File, error) {
-	f, err := os.OpenFile(ref.fullPath(), oflags(mode), 0)
+	file, err := os.OpenFile(ref.fullPath(), oflags(mode), 0)
 	if err != nil {
 		return nil, err
 	}
-
-	return &fWrap{File: f}, err
+	ref.file = file
+	return ref, err
 }
 
-func (file *fWrap) Read(ctx context.Context, p []byte,
+func (ref *FileRef) Read(ctx context.Context, p []byte,
 	offset int64) (n int, err error) {
-	n, err = file.File.ReadAt(p, offset)
+	n, err = ref.file.ReadAt(p, offset)
 	if err != nil && err != io.EOF {
 		return n, err
 	}
 	return n, nil
 }
 
-func (file *fWrap) Write(ctx context.Context, p []byte,
+func (ref *FileRef) Write(ctx context.Context, p []byte,
 	offset int64) (n int, err error) {
-	return file.File.WriteAt(p, offset)
+	return ref.file.WriteAt(p, offset)
 }
 
-func (file *fWrap) Close(ctx context.Context) error {
-	file.File.Close()
-	return nil
-}
-
-func (_ *fWrap) IOUnit() int {
+func (ref *FileRef) IOUnit() int {
 	return 0
 }

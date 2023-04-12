@@ -35,7 +35,7 @@ type authEnt struct {
 
 type session struct {
 	sync.Mutex
-	fs    FServer
+	fs    FileSys
 	auths map[Fid]*authEnt
 	refs  map[Fid]*dirEnt
 }
@@ -44,7 +44,7 @@ type session struct {
 // the server functions directly.
 
 // Create a session object able to respond to 9P calls.
-// Fid-s are managed at this level, so the FServer only
+// Fid-s are managed at this level, so the FileSys only
 // works with Dirent-s.  All operations on a
 // Fid are transactional, since a lock is held while server
 // code is doing something to the corresponding Dirent.
@@ -52,7 +52,7 @@ type session struct {
 //	For example, p9p/ufs translates all fid-s using sess.getRef(fid)
 //	and https://9fans.github.io/usr/local/plan9/src/cmd/ramfs.c
 //	uses user-defined structs for Fid-s.
-func FSession(fs FServer) Session {
+func SFileSys(fs FileSys) Session {
 	return &session{
 		fs:    fs,
 		auths: make(map[Fid]*authEnt),
@@ -62,9 +62,6 @@ func FSession(fs FServer) Session {
 
 func (sess *session) Stop(err error) error {
 	ctx := CancelledCtxt{}
-	for _, aref := range sess.auths {
-		aref.afile.Close(ctx)
-	}
 	for _, ref := range sess.refs {
 		// close and clunk
 		delRefAction(ctx, ref, false)
@@ -190,11 +187,6 @@ func combine_errors(err, err2 error) error {
 func delRefAction(ctx context.Context, ref *dirEnt, remove bool) error {
 	var err error
 	var err2 error
-	// If the file has been opened, we also call Close()
-	if ref.file != nil {
-		err = ref.file.Close(ctx)
-		ref.file = nil
-	}
 	if remove {
 		err2 = ref.ent.Remove(ctx)
 	} else {
@@ -378,12 +370,7 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 	if newfid == fid {
 		// Re-use fid for result of walk.
 		// Note: It is still locked.
-		if ref.file != nil {
-			// TODO(frobnitzem): note - ignoring error here
-			ref.file.Close(ctx)
-			ref.file = nil
-		}
-		ref.ent.Clunk(ctx)
+		ref.ent.Clunk(ctx) // TODO(frobnitzem): note - ignoring error here
 	} else {
 		// We have increased the size of sess.refs by 1.
 		// both ref and newref are locked
@@ -518,9 +505,6 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	}
 
 	// Success. Clean-up ref and replace with ent.
-	if ref.file != nil {
-		ref.file.Close(ctx)
-	}
 	ref.ent.Clunk(ctx)
 	ref.ent = ent
 	ref.file = file

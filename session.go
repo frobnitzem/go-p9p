@@ -2,9 +2,12 @@ package p9p
 
 import "context"
 
-// Session provides the central abstraction for a 9p connection. Clients
-// implement sessions and servers serve sessions. Sessions can be proxied by
-// serving up a client session.
+// Session provides the first level of abstraction for a 9p connection.
+// Clients implement sessions and servers serve sessions.
+//
+// Sessions can be proxied by serving up a client session.
+//
+// This dual interface pattern is followed at higher levels of abstraction.
 //
 // The interface is also wired up with full context support to manage timeouts
 // and resource clean up.

@@ -33,20 +33,20 @@ func TestServer(t *testing.T) {
 		defer wg.Done()
 
 		srv := NewServer(sctx, "/tmp")
-		session := p9p.FSession(srv)
+		session := p9p.SFileSys(srv)
 
 		msize, version := session.Version()
 		assert.Equal("9P2000", version)
 		assert.True(msize >= 1024)
 
-		err := p9p.ServeConn(sctx, repC, p9p.Dispatch(session))
+		err := p9p.ServeConn(sctx, repC, p9p.SSession(session))
 		assert.NotNil(err)
 		assert.Equal(err.Error(), "context canceled")
 	}()
 
 	var count int
 
-	session, err := p9p.NewSession(ctx, reqC)
+	session, err := p9p.CSession(ctx, reqC)
 	assert.Nil(err)
 
 	msize, version := session.Version()

@@ -64,9 +64,9 @@ func main() {
 
 			ctx := context.WithValue(ctx, "conn", conn)
 			log.Println("connected", conn.RemoteAddr())
-			session := p9p.FSession(ufs.NewServer(ctx, root))
+			session := p9p.SFileSys(ufs.NewServer(ctx, root))
 
-			if err := p9p.ServeConn(ctx, conn, p9p.Dispatch(session)); err != nil {
+			if err := p9p.ServeConn(ctx, conn, p9p.SSession(session)); err != nil {
 				log.Printf("serving conn: %v", err)
 			}
 		}(c)

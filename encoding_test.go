@@ -123,6 +123,36 @@ func TestEncodeDecode(t *testing.T) {
 				0x0, 0x58, 0x4, 0x0, 0x0, 0x6a, 0x2b, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		},
 		{
+			description: "TopenFcall",
+			target: &Fcall{
+				Type: Topen,
+				Tag:  2256,
+				Message: MessageTopen{
+					Fid:  Fid(285212672),
+					Mode: ORDWR,
+				},
+			},
+			marshaled: []byte{
+				0x70, 0xd0, 0x8, 0x00, 0x0, 0x0, 0x11, 0x02},
+		},
+		{
+			description: "RopenFcall",
+			target: &Fcall{
+				Type: Ropen,
+				Tag:  2257,
+				Message: MessageRopen{
+					Qid{Type: QTFILE,
+						Version: 1112,
+						Path:    11114},
+					7777,
+				},
+			},
+			marshaled: []byte{
+				0x71, 0xd1, 0x8,
+				0x0, 0x58, 0x4, 0x0, 0x0, 0x6a, 0x2b, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+				0x61, 0x1e, 0x00, 0x00},
+		},
+		{
 			description: "EmptyRreadFcall",
 			target: &Fcall{
 				Type:    Rread,

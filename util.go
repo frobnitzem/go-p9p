@@ -1,6 +1,9 @@
 package p9p
 
-import "strings"
+import (
+	"path"
+	"strings"
+)
 
 // Returns -1 if any path elements are '.' or
 // contain characters '/' or '\'
@@ -61,4 +64,25 @@ func NormalizePath(args []string) ([]string, int) {
 		cursor++
 	}
 	return ans[:cursor], lo
+}
+
+// Determine the starting Dirent and path elements to send
+// to Walk() in order to reach path p.
+func ToWalk(ent Dirent, p string) (isAbs bool, steps []string, err error) {
+	var bsp int
+	isAbs = path.IsAbs(p)
+	steps, bsp = NormalizePath(strings.Split(strings.Trim(p, "/"), "/"))
+
+	if isAbs {
+		if bsp != 0 {
+			return true, nil, MessageRerror{"invalid path: " + p}
+		}
+		return true, steps, nil
+	}
+
+	if bsp < 0 {
+		return false, nil, MessageRerror{"invalid path: " + p}
+	}
+
+	return false, steps, nil
 }

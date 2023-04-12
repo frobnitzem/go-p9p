@@ -22,6 +22,7 @@ type fServer struct {
 //   - Path never contains "." or ".." or "" (empty) elements.
 type FileRef struct {
 	fs   *fServer
+	file *os.File
 	Path string // This is an *internal path*.
 	Info p9p.Dir
 }
@@ -89,7 +90,7 @@ func (fs *fServer) newRef(p string) (*FileRef, error) {
 	return &FileRef{fs: fs, Path: p, Info: dirFromInfo(info)}, nil
 }
 
-func NewServer(ctx context.Context, root string) p9p.FServer {
+func NewServer(ctx context.Context, root string) p9p.FileSys {
 	return &fServer{
 		Base: filepath.Clean(root),
 	}

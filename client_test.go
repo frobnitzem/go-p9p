@@ -62,7 +62,7 @@ func TestClient(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		session, err := NewSession(ctx, reqC)
+		session, err := CSession(ctx, reqC)
 		assert.Nil(err)
 		msize, version := session.Version()
 		assert.Equal(1024, msize)
