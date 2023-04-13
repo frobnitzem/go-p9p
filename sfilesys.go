@@ -13,14 +13,14 @@ import (
 //
 // The lock is used during Dirent or File creation
 // to protect cases where an inconsistent state of the
-// dirEnt may be seen.
+// Ent may be seen.
 //
 // getRef acquires the lock before returning it, to
 // ensure that the receiver sees such updates.
 //
 // By creating a struct here, we can prevent holding the
 // lock on the session.
-type dirEnt struct {
+type Ent struct {
 	sync.Mutex
 	ent  Dirent // non-nil if unlocked
 	file File   // non-nil if Open-ed
@@ -37,7 +37,18 @@ type session struct {
 	sync.Mutex
 	fs    FileSys
 	auths map[Fid]*authEnt
-	refs  map[Fid]*dirEnt
+	refs  map[Fid]*Ent
+}
+
+// TODO(frobnitzem): validate required server returns to ensure non-nil.
+func EnsureNonNil(x any, err error) error {
+	if err != nil {
+		return err
+	}
+	if x == nil {
+		return MessageRerror{Ename: "invalid result"}
+	}
+	return nil
 }
 
 // TODO(frobnitzem): Implement a client that uses this API to call
@@ -56,7 +67,7 @@ func SFileSys(fs FileSys) Session {
 	return &session{
 		fs:    fs,
 		auths: make(map[Fid]*authEnt),
-		refs:  make(map[Fid]*dirEnt),
+		refs:  make(map[Fid]*Ent),
 	}
 }
 
@@ -64,15 +75,17 @@ func (sess *session) Stop(err error) error {
 	ctx := CancelledCtxt{}
 	for _, ref := range sess.refs {
 		// close and clunk
-		delRefAction(ctx, ref, false)
+		if ref != nil {
+			delRefAction(ctx, ref, false)
+		}
 	}
 	return err
 }
 
-// Acquires a lock on the dirEnt just after successful lookup.
+// Acquires a lock on the Ent just after successful lookup.
 // A successful return means the caller is responsible
 // for calling `ref.Unlock()`.
-func (sess *session) getRef(fid Fid) (*dirEnt, error) {
+func (sess *session) getRef(fid Fid) (*Ent, error) {
 	if fid == NOFID {
 		return nil, ErrUnknownfid
 	}
@@ -115,7 +128,7 @@ func (sess *session) checkRefLocked(fid Fid) error {
 // Add a new reference to the refs table.
 // -- called by attach and walk
 //
-// Note - Each dirEnt corresponds to exactly one Fid.
+// Note - Each Ent corresponds to exactly one Fid.
 // The fid can be opened exactly once.  We assume
 // that the client is tracking number of processes referencing
 // each Fid, so we don't need to handle ref-counting in the server.
@@ -127,15 +140,15 @@ func (sess *session) newRef(fid Fid, d Dirent) error {
 		return err
 	}
 
-	sess.refs[fid] = &dirEnt{ent: d}
+	sess.refs[fid] = &Ent{ent: d}
 	return nil
 }
 
 // Create a new, empty, reference set to locked on creation.
-// All (unlockd) dirEnts must have non-nil ref.ent values.
+// All (unlockd) Ents must have non-nil ref.ent values.
 // It is the caller's responsibility to fill that in, and then
 // unlock it.
-func (sess *session) holdRef(fid Fid) (*dirEnt, error) {
+func (sess *session) holdRef(fid Fid) (*Ent, error) {
 	sess.Lock()
 	defer sess.Unlock()
 
@@ -143,7 +156,7 @@ func (sess *session) holdRef(fid Fid) (*dirEnt, error) {
 		return nil, err
 	}
 
-	ref := &dirEnt{}
+	ref := &Ent{}
 	ref.Lock()
 	sess.refs[fid] = ref
 	return ref, nil
@@ -170,6 +183,9 @@ func (sess *session) delRef(ctx context.Context, fid Fid,
 	delete(sess.refs, fid)
 	sess.Unlock()
 	defer ref.Unlock()
+	if ref.ent == nil {
+		return nil
+	}
 
 	return delRefAction(ctx, ref, remove)
 }
@@ -184,7 +200,7 @@ func combine_errors(err, err2 error) error {
 	return MessageRerror{Ename: err.Error() + "/" + err2.Error()}
 }
 
-func delRefAction(ctx context.Context, ref *dirEnt, remove bool) error {
+func delRefAction(ctx context.Context, ref *Ent, remove bool) error {
 	var err error
 	var err2 error
 	if remove {
@@ -309,7 +325,7 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 	var qids []Qid
 	var ent Dirent // the newly discovered ent
 
-	var newref *dirEnt
+	var newref *Ent
 
 	ref, err := sess.getRef(fid)
 	if err != nil {
@@ -343,6 +359,7 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 		}
 		var err error
 		_, ent, err = ref.ent.Walk(ctx)
+		err = EnsureNonNil(ent, err)
 		if err != nil {
 			return nil, err
 		}
@@ -354,6 +371,7 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 			return nil, err
 		}
 		qids, ent, err = ref.ent.Walk(ctx, names...)
+		err = EnsureNonNil(ent, err)
 		if err != nil {
 			return nil, err
 		}
@@ -439,7 +457,7 @@ func (_ *Readdir) IOUnit() int {
 //
 // Should be called with ref-lock held.
 // Does not release the lock.
-func openLocked(ctx context.Context, ref *dirEnt,
+func openLocked(ctx context.Context, ref *Ent,
 	mode Flag) error {
 
 	if ref.file != nil {
@@ -469,7 +487,7 @@ func openLocked(ctx context.Context, ref *dirEnt,
 func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	perm uint32, mode Flag) (Qid, uint32, error) {
 	var err error
-	var ref *dirEnt
+	var ref *Ent
 	var file File
 
 	fail := func(name string) (Qid, uint32, error) {
@@ -495,7 +513,7 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 		return fail(err.Error())
 	}
 	if IsDir(ent) { // Do our own thing for directories.
-		next := dirEnt{ent: ent}
+		next := Ent{ent: ent}
 		err = openLocked(ctx, &next, mode)
 		if err != nil {
 			ent.Clunk(ctx) // Note: ignoring possible multiple errors
