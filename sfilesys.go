@@ -41,7 +41,7 @@ type session struct {
 }
 
 // TODO(frobnitzem): validate required server returns to ensure non-nil.
-func EnsureNonNil(x any, err error) error {
+func EnsureNonNil(x interface{}, err error) error {
 	if err != nil {
 		return err
 	}

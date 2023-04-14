@@ -31,7 +31,6 @@ type AuthFile interface {
 type ExpandedAuth interface {
 	AuthFile
 	ExpandedEnt
-	Opened() (file ExpandedFile, Mode uint32)
 }
 
 type ExpandedFile interface {
