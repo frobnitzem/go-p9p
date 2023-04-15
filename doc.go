@@ -15,10 +15,11 @@ The best place to get started is with Serve. Serve can be provided a
 connection and a handler. A typical implementation will call Serve as part of
 a listen/accept loop. As each network connection is created, Serve can be
 called with a handler for the specific connection. The handler can be
-implemented with a Session via the Dispatch function or can generate sessions
-for dispatch in response to client messages. (See cmd/9ps for an example)
+implemented with a Session via the SSession function or can generate sessions
+for dispatch in response to client messages.
+(See logging.go and cmd/9ps for an example)
 
-On the client side, NewSession provides a 9p session from a connection. After
+On the client side, CSession provides a 9p session from a connection. After
 a version negotiation, methods can be called on the session, in parallel, and
 calls will be sent over the connection. Call timeouts can be controlled via
 the context provided to each method call.
@@ -68,11 +69,23 @@ differently based on negotiated versions?
 
 # Caveats
 
-This package has a number of TODOs to make it easier to use. Most of the
-existing code provides a solid base to work from. Don't be discouraged by the
-sawdust.
+There is a lot of state in the 9P2000 protocol.  Most of this is
+necessary to track conversations between clients and servers.
+However, it also makes validating the server very hard.
+In particular the protocol definition itself does not have
+a formal finite-state machine for client or server activities.
+These should be separately formulated and the implementations
+should be checked against them to ensure things like shutdown sequences
+are well defined.  Recent updates to the package have made a best
+effort to close out all state when clients disconnect.
 
-In addition, the testing is embarassingly lacking. With time, we can get full
-testing going and ensure we have confidence in the implementation.
+Also, not all of the permission and validity checks mentioned in
+the 9P2000 docs are currently implemented.
+For example, both C and S-FileSys have the ability to cache all file Qids,
+so they should check QType and error out early if the resource type
+doesn't make sense for a call.
+
+In addition, testing could use improvement.  More servers using
+this functionality and generating bug reports are welcome!
 */
 package p9p

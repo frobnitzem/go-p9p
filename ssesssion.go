@@ -18,12 +18,15 @@ type sessionHandler struct {
 	// TODO(frobnitzem): make use of version to audit messages at this level
 }
 
-// Dispatch returns a handler that transforms messages
+// SSession returns a handler that transforms messages
 // into function calls (dispatching to Session's methods).
 // Since the ServeConn function calls the handler from
-// gorotines, no concurrency is managed by the returned handler.
-// It simply turns messages into function calls on the session.
-func Dispatch(session Session) Handler {
+// gorotines, no concurrency is managed by the handler this
+// defined by SSession.
+//
+// Instead, the Handler simply turns messages into function
+// calls on the session.
+func SSession(session Session) Handler {
 	msize, _ := session.Version()
 	return sessionHandler{session, msize}
 }

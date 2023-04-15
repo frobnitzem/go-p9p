@@ -7,6 +7,13 @@ import (
 	p9p "github.com/frobnitzem/go-p9p"
 )
 
+func dirFromEntry(entry os.DirEntry) (p9p.Dir, error) {
+	info, err := entry.Info() // os.FileInfo
+	if err != nil {
+		return p9p.Dir{}, err
+	}
+	return dirFromInfo(info), err
+}
 func dirFromInfo(info os.FileInfo) p9p.Dir {
 	dir := p9p.Dir{}
 

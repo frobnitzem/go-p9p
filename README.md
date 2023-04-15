@@ -40,7 +40,20 @@ Bring the server down with:
 
 ## Build your own filesystem
 
-TODO: write a description here...
+To build a filesystem using this library, implement
+the FileSys interface, and then pass it to `SFileSys`.
+For details on the FileSys interface, see `filesys.go`.
+For examples, see `ufs/` and `sleepfs/` subdirectories.
+
+For a main program running the ufs server, see `cmd/9fs/`.
+
+In case you don't already have a 9p client, try `cmd/9fr/`,
+but note it is not full-featured.
+
+Alternatively, if you *want* to implement a server that works
+at a lower level of the stack, you can implement a Session
+interface directly.  See `session.go` for the interface
+definition and `servefs.go` for an implementation at this level.
 
 
 ## Protocol Stack
@@ -64,14 +77,14 @@ and session encryption is on the TODO list.
 
 ### Server Stack
 
-servefs.go: FSession(fs FServer) Session
-  - Creates a Session type from an FServer
-  - The FServer represents a fileserver broken into 3 levels,
+sfilesys.go: SFileSys(fs FileSys) Session
+  - Creates a Session type from an FileSys
+  - The FileSys represents a fileserver broken into 3 levels,
     AuthFile-s, Dirent-s, and Files
   - Rather than track Fid-s, calls to Dirent-s create
     more Dirent and Files.
 
-dispatcher.go: `Dispatch(session Session) Handler`
+ssesssion.go: `Dispatch(session Session) Handler`
   - Delegates each type of messages.go:Message to a
     function call (from Session).
   - Tags and TFlush-s are handled at this level,
@@ -96,7 +109,13 @@ serverconn.go: `(c *conn) serve() error`
 
 ### Client Stack
 
-client.go: `NewSession(ctx context.Context, conn net.Conn) (Session, error)`
+cfilesys.go: `CFileSys(session Session) FileSys`
+  - Creates an FileSys from a Session type
+  - The FileSys wraps up the session API so the user does
+    not need to see Fid-s or Qid-s, unless you want to.
+
+// Note: we could make into CSession(Handler) (Session, error)
+client.go: `CSession(ctx context.Context, conn net.Conn) (Session, error)`
   - negotiates protocol, returns client object
   - client object has Walk/Stat/Open/Read methods that appear like
     synchronous send/receive pairs.  Many requests can be sent in parallel,
@@ -132,13 +151,7 @@ encoding.go: `interface Codec`
   - provides Marshal, Unmarshal, and Size for converting between
     `[]byte` and 9P message structs.
 
-## Protocol stack - layer view
-
-### FSystem interface.
-
-
-
-Differences between client and server:
+### Differences between client and server:
 
 - The server auto-generates calls to File.Close().
   This function does nothing on the client side (use Clunk instead).

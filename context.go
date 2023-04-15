@@ -43,6 +43,6 @@ func (_ CancelledCtxt) Err() error {
 	return context.Canceled
 }
 
-func (_ CancelledCtxt) Value(key any) (val any) {
+func (_ CancelledCtxt) Value(key interface{}) (val interface{}) {
 	return nil
 }
