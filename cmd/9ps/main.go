@@ -11,6 +11,7 @@ import (
 
 	"github.com/frobnitzem/go-p9p"
 	"github.com/frobnitzem/go-p9p/ufs"
+	"github.com/frobnitzem/go-p9p/sleepfs"
 	"golang.org/x/net/context"
 )
 
@@ -64,7 +65,12 @@ func main() {
 
 			ctx := context.WithValue(ctx, "conn", conn)
 			log.Println("connected", conn.RemoteAddr())
-			session := p9p.SFileSys(ufs.NewServer(ctx, root))
+			var session p9p.Session
+			if root == "sleepfs" {
+				session = p9p.SFileSys(sleepfs.NewServer(ctx))
+			} else {
+				session = p9p.SFileSys(ufs.NewServer(ctx, root))
+			}
 
 			if err := p9p.ServeConn(ctx, conn, p9p.SSession(session)); err != nil {
 				log.Printf("serving conn: %v", err)

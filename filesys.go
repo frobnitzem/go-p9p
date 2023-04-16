@@ -22,31 +22,6 @@ type AuthFile interface {
 	Success() bool // Was the authentication successful?
 }
 
-// FileSystem implementions gather more data than the required
-// minimal information to send messages.  The following expanded
-// interfaces are generated and used internally.
-// They contain useful information that can be looked up
-// from the server, but are only guaranteed to be active while
-// an active call is running on the server.
-type ExpandedAuth interface {
-	AuthFile
-	ExpandedEnt
-}
-
-type ExpandedFile interface {
-	File
-	ExpandedEnt
-	Mode() (Mode uint32)
-	// TODO(frobnitzem): also implement a max-IOUnit here.
-}
-
-type ExpandedEnt interface {
-	Dirent
-	Path() string
-	// file is nil if ent is not yet successfully opened.
-	Opened() (file ExpandedFile, Mode uint32)
-}
-
 // Simplified interface to a file that has been Open-ed.
 // Note: Since a Dirent can only be opened once,
 // it is up to Clunk to close any underlying File state,
