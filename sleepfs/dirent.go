@@ -33,6 +33,8 @@ func (s sleepTime) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 	return (&dirList{s, 0, 1000}).Next, nil
 }
 
+func (s sleepTime) SetInfo(_ *p9p.SFid) { }
+
 func (s sleepTime) Clunk(ctx context.Context) error {
 	return nil
 }

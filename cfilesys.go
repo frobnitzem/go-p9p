@@ -131,6 +131,8 @@ func (fs *fsState) newEnt() cEnt {
 	}
 }
 
+func (_ cEnt) SetInfo(_ *SFid) {}
+
 // Note: This always returns returns a file with a nonzero IOUnit.
 func (ent cEnt) Open(ctx context.Context, mode Flag) (File, error) {
 	_, iounit, err := ent.fs.session.Open(ctx, ent.fid, mode)

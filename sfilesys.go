@@ -37,17 +37,9 @@ type SFid struct {
 	Mode uint32 // defined if Open-ed
 }
 
-type authEnt struct {
-	sync.Mutex
-	afile AuthFile
-	uname string
-	aname string
-}
-
 type session struct {
-	fs    FileSys
-	auths map[Fid]*authEnt
-	refs  sync.Map // type [Fid](*SFid)
+	fs   FileSys
+	refs sync.Map // type [Fid](*SFid)
 }
 
 // TODO(frobnitzem): validate required server returns to ensure non-nil.
@@ -75,8 +67,7 @@ func EnsureNonNil(x interface{}, err error) error {
 //	uses user-defined structs for Fid-s.
 func SFileSys(fs FileSys) Session {
 	return &session{
-		fs:    fs,
-		auths: make(map[Fid]*authEnt),
+		fs: fs,
 	}
 }
 
@@ -116,8 +107,14 @@ func (sess *session) getRef(fid Fid) (*SFid, error) {
 	return ref, nil
 }
 
+// Sets ref.Ent and informs the ent of ref.
+func (ref *SFid) link(ent Dirent) {
+	ref.Ent = ent
+	ent.SetInfo(ref)
+}
+
 // Add a new reference to the refs table.
-// -- called by attach and walk
+// -- called by auth, attach and walk
 //
 // Note - Each SFid corresponds to exactly one Fid.
 // The fid can be opened exactly once.  We assume
@@ -128,16 +125,18 @@ func (sess *session) getRef(fid Fid) (*SFid, error) {
 // is returned, still in the locked state.
 // The caller is responsible for unlocking it.
 //
-// To place a hold on a fid, call this with ent == nil.
-// A nil value for ref.Ent is checked in getRef,
-// and handles the case where a fid was put on hold, but
-// the hold was not needed, so the fid was removed from the map.
-func (sess *session) newRef(fid Fid, ent Dirent) (ref *SFid, err error) {
+// The SFid starts with with Ent == nil.
+//
+// getRef checks for this nil-Ent, and returns ErrUnknownfid.
+// This covers the case where a fid was put on hold, but
+// creation of an Ent wasn't successful, so the fid
+// was removed from the map.
+func (sess *session) newRef(fid Fid) (ref *SFid, err error) {
 	if fid == NOFID {
 		return nil, ErrUnknownfid
 	}
 
-	ref = &SFid{Ent: ent}
+	ref = &SFid{}
 	ref.Lock()
 	_, found := sess.refs.LoadOrStore(fid, ref)
 	if found {
@@ -197,8 +196,9 @@ func delRefAction(ctx context.Context, ref *SFid, remove bool) error {
 // These aref-s are locked until the afile is established.
 func (sess *session) Auth(ctx context.Context, afid Fid,
 	uname, aname string) (Qid, error) {
-	// Can't close/clunk an afid, so the path will be unique.
-	aq := Qid{Type: QTAUTH, Path: uint64(afid)}
+
+	// FIXME: need a mutex to generate unique paths here...
+	aq := Qid{Type: QTAUTH, Path: 0}
 
 	if afid == NOFID { // not in spec, but treat as a no-op
 		return aq, nil
@@ -207,27 +207,19 @@ func (sess *session) Auth(ctx context.Context, afid Fid,
 		return aq, MessageRerror{Ename: "no auth"}
 	}
 
-	_, found := sess.auths[afid]
-	if found {
-		return aq, ErrDupfid
-	}
-	aref := &authEnt{uname: uname, aname: aname}
-
-	aref.Lock()
-	sess.auths[afid] = aref
-
-	var err error
-	aref.afile, err = sess.fs.Auth(ctx, uname, aname)
-	if err != nil { // need to re-acquire session lock to delete
-		aref.afile = nil
-	}
-	aref.Unlock()
-
+	aref, err := sess.newRef(afid)
 	if err != nil {
-		aref.Lock()
-		delete(sess.auths, afid)
-		aref.Unlock()
+		return aq, err
 	}
+	defer aref.Unlock()
+
+	afile, err := sess.fs.Auth(ctx, uname, aname)
+	if err != nil { // need to re-acquire session lock to delete
+		sess.refs.Delete(afid)
+		return aq, err
+	}
+	//file, _ := afile.(File)
+	aref.File = afile
 
 	return aq, err
 }
@@ -239,31 +231,30 @@ func (sess *session) Attach(ctx context.Context, fid, afid Fid,
 	//	return Qid{}, MessageRerror{Ename: "no user"}
 	//}
 
-	var aref *authEnt
 	var af AuthFile
 
 	if afid != NOFID {
-		var found bool
-		aref, found = sess.auths[afid]
-		if !found {
+		var aref *SFid
+		var ok bool
+		var err error
+
+		aref, err = sess.getRef(afid)
+		if err != nil || aref.File == nil {
 			return Qid{}, ErrUnknownfid
 		}
+		defer aref.Unlock()
 
-		aref.Lock() // acquiring in non-nil state guarantees afile is present
-		if aref.afile == nil {
-			aref.Unlock()
-			return Qid{}, ErrUnknownfid
-		}
-		ok := aref.afile.Success()
-		af = aref.afile
-		aref.Unlock()
-
+		af, ok = aref.File.(AuthFile)
 		if !ok {
+			return Qid{}, ErrUnknownfid
+		}
+
+		if !af.Success() {
 			return Qid{}, MessageRerror{Ename: "unauthorized"}
 		}
 	}
 
-	ref, err := sess.newRef(fid, nil)
+	ref, err := sess.newRef(fid)
 	if err != nil {
 		return Qid{}, err
 	}
@@ -274,7 +265,7 @@ func (sess *session) Attach(ctx context.Context, fid, afid Fid,
 		sess.refs.Delete(fid)
 		return Qid{}, err
 	}
-	ref.Ent = ent
+	ref.link(ent)
 
 	return ent.Qid(), nil
 }
@@ -317,7 +308,7 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 	}()
 
 	if newfid != fid {
-		newref, err = sess.newRef(newfid, nil)
+		newref, err = sess.newRef(newfid)
 		if err != nil {
 			return nil, err
 		}
@@ -368,7 +359,7 @@ func (sess *session) Walk(ctx context.Context, fid Fid, newfid Fid,
 		newref = nil
 		// cleanup will unlock ref
 	}
-	ref.Ent = ent
+	ref.link(ent)
 	return qids, nil
 }
 
@@ -494,7 +485,8 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 
 	// Success. Clean-up ref and replace with ent.
 	ref.Ent.Clunk(ctx)
-	ref.Ent = ent
+	ref.File = nil
+	ref.link(ent)
 	ref.File = file
 
 	return ref.Ent.Qid(), uint32(file.IOUnit()), nil
