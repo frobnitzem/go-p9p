@@ -25,6 +25,7 @@ var (
 	ErrNoremove     = new9pError("remove prohibited")
 	ErrNostat       = new9pError("stat prohibited")
 	ErrNotfound     = new9pError("file not found")
+	ErrNoread       = new9pError("read prohibited")
 	ErrNowrite      = new9pError("write prohibited")
 	ErrNowstat      = new9pError("wstat prohibited")
 	ErrPerm         = new9pError("permission denied")

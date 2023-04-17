@@ -18,6 +18,12 @@ import (
 // Internal representation of a Dirent
 // File is nil unless Open has been called.
 //
+// Path is an internal path.  Internal paths have the invariants:
+//
+//   - Path always begins with "/".
+//   - Path does not contain any "\\" characters.
+//   - Path never contains "." or ".." or "" (empty) elements.
+//
 // The lock is used during all operations on the SFid
 // -- especially during creation and Opening
 // to protect cases where an inconsistent state of the
@@ -30,11 +36,12 @@ type SFid struct {
 	Ent  Dirent // non-nil if unlocked (unless Ent deleted before being defined)
 	File File   // non-nil if Open-ed
 	// if file was returned by Auth, must also implement AuthFile
-	Path string // Unix-convention, "clean" absolute path within the FileSys
+	path string // Unix-convention, "clean" absolute path within the FileSys
+	// This is an *internal path*.
 	// at the time the Ent was created by a Walk/Create.
 	// If modified by the server, changes will only
 	// apply to future Walk/Create-s from this Ent.
-	Mode uint32 // defined if Open-ed
+	Mode Flag // Defined if Open-ed.
 }
 
 type session struct {
@@ -250,7 +257,7 @@ func (sess *session) Attach(ctx context.Context, fid, afid Fid,
 		}
 
 		if !af.Success() {
-			return Qid{}, MessageRerror{Ename: "unauthorized"}
+			return Qid{}, ErrPerm
 		}
 	}
 
@@ -372,6 +379,9 @@ func (sess *session) Read(ctx context.Context, fid Fid, p []byte, offset int64) 
 	if ref.File == nil {
 		return 0, MessageRerror{Ename: "no file open"} //ErrClosed
 	}
+	if (ref.Mode & OEXEC) == OWRITE {
+		return 0, ErrNoread
+	}
 
 	return ref.File.Read(ctx, p, offset)
 }
@@ -386,6 +396,9 @@ func (sess *session) Write(ctx context.Context, fid Fid, p []byte,
 	if ref.File == nil {
 		return 0, MessageRerror{Ename: "no file open"} //ErrClosed
 	}
+	if (ref.Mode&OEXEC) != OWRITE && (ref.Mode&OEXEC) != ORDWR {
+		return 0, ErrNowrite
+	}
 
 	return ref.File.Write(ctx, p, offset)
 }
@@ -398,8 +411,6 @@ func (sess *session) Open(ctx context.Context, fid Fid,
 	}
 	defer ref.Unlock()
 
-	// TODO(frobnitzem): check open permissions here,
-	// before calling openLocked.
 	err = openLocked(ctx, ref, mode)
 	if err != nil {
 		return Qid{}, 0, err
@@ -430,18 +441,21 @@ func openLocked(ctx context.Context, ref *SFid, mode Flag) error {
 
 	if IsDir(ref.Ent) {
 		dirs, err := ref.Ent.OpenDir(ctx)
+		err = EnsureNonNil(dirs, err)
 		if err != nil {
 			return err
 		}
 		file = NewReaddir(NewCodec(), dirs)
 	} else {
 		file, err = ref.Ent.Open(ctx, mode)
+		err = EnsureNonNil(file, err)
 		if err != nil {
 			return err
 		}
 	}
 
 	ref.File = file
+	ref.Mode = mode
 	return nil
 }
 
@@ -470,6 +484,8 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	}
 
 	ent, file, err := ref.Ent.Create(ctx, name, perm, mode)
+	err = EnsureNonNil(ent, err)
+	err = EnsureNonNil(file, err)
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -486,8 +502,10 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	// Success. Clean-up ref and replace with ent.
 	ref.Ent.Clunk(ctx)
 	ref.File = nil
+	ref.Mode = 0
 	ref.link(ent)
 	ref.File = file
+	ref.Mode = mode
 
 	return ref.Ent.Qid(), uint32(file.IOUnit()), nil
 }

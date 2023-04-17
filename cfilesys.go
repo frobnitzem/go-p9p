@@ -227,7 +227,7 @@ func (ent cEnt) Qid() Qid {
 
 func (ent cEnt) Create(ctx context.Context, name string,
 	perm uint32, mode Flag) (Dirent, File, error) {
-	if name == "." || name == ".." || strings.Contains(name, "/\\") {
+	if len(name) == 0 || name == "." || name == ".." || strings.Contains(name, "/\\") {
 		return noEnt, noFile, MessageRerror{"Invalid filename"}
 	}
 	if !IsDir(ent) {
