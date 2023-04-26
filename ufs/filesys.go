@@ -23,7 +23,8 @@ type fServer struct {
 type FileRef struct {
 	fs   *fServer
 	file *os.File
-	Path string // This is an *internal path*.
+	SFid *p9p.SFid
+	Path string
 	Info p9p.Dir
 }
 
@@ -51,27 +52,6 @@ func (fs *fServer) fullPath(p string) (string, error) {
 // a valid internal path.
 func (ref FileRef) fullPath() string {
 	return filepath.Join(ref.fs.Base, filepath.FromSlash(ref.Path))
-}
-
-// Find the absolute path of names relative to dir.
-//
-// dir must be a valid internal path.
-// names are validated.  They are not re-ordered
-// or changed (e.g. to process "a/../" etc.), so
-// names that contain ".", "", or non-".." before ".."
-// will return an error.
-//
-// On success, the result is always a valid internal path.
-func relName(dir string, names ...string) (string, error) {
-	depth := strings.Count(dir[:len(dir)-1], "/")
-	bsp := p9p.ValidPath(names)
-	if bsp < 0 || bsp > depth {
-		//fmt.Println("Invalid path: ", strings.Join(names, "/"))
-		//fmt.Println("dir: ", dir, "depth: ", depth, " bsp: ", bsp)
-		return dir, p9p.MessageRerror{Ename: "Invalid path"}
-	}
-
-	return path.Join(dir, path.Join(names...)), nil
 }
 
 // Create a new FileRef pointing to absolute path, p

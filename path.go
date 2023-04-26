@@ -5,6 +5,39 @@ import (
 	"strings"
 )
 
+// Find the absolute path of names relative to dir.
+//
+// dir must be a valid internal path.
+// names are validated.  They are not re-ordered
+// or changed (e.g. to process "a/../" etc.), so
+// names that contain ".", "", or non-".." before ".."
+// will return an error.
+//
+// On success, the result is always a valid internal path.
+func WalkName(dir string, names ...string) (string, error) {
+	depth := strings.Count(dir[:len(dir)-1], "/")
+	bsp := ValidPath(names)
+	if bsp < 0 || bsp > depth {
+		//fmt.Println("Invalid path: ", strings.Join(names, "/"))
+		//fmt.Println("dir: ", dir, "depth: ", depth, " bsp: ", bsp)
+		return dir, MessageRerror{Ename: "Invalid path"}
+	}
+
+	return path.Join(dir, path.Join(names...)), nil
+}
+
+// Find the result of Create(name) from the directory dir.
+// Checks that name is valid (i.e. does not contain slashes,
+// and is not "", "." or "..").
+//
+// On success, the result is always a valid internal path.
+func CreateName(dir string, name string) (string, error) {
+	if strings.ContainsAny(name, "\\/") || len(name) == 0 || name == "." || name == ".." {
+		return "", MessageRerror{Ename: "Invalid path"}
+	}
+	return path.Join(dir, name), nil
+}
+
 // Returns -1 if any path elements are '.' or
 // contain characters '/' or '\'
 // or if .. follows a non-..
@@ -12,7 +45,7 @@ import (
 func ValidPath(args []string) int {
 	n := 0
 	for i, s := range args {
-		if s == "." {
+		if len(s) == 0 || s == "." {
 			return -1
 		} else if s == ".." {
 			if n != i {

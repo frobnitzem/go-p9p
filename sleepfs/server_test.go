@@ -112,7 +112,7 @@ func TestServer(t *testing.T) {
 	assert.Equal(qids[0], qid2)
 
 	count, err = session.Write(ctx, fid100, []byte("abcd"), 0)
-	//assert.NotNil(err) // FIXME: implement perm. check
+	assert.NotNil(err)
 
 	msg := make([]byte, 1024)
 	count, err = session.Read(ctx, fid100, msg, 1)

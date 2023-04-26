@@ -22,31 +22,6 @@ type AuthFile interface {
 	Success() bool // Was the authentication successful?
 }
 
-// FileSystem implementions gather more data than the required
-// minimal information to send messages.  The following expanded
-// interfaces are generated and used internally.
-// They contain useful information that can be looked up
-// from the server, but are only guaranteed to be active while
-// an active call is running on the server.
-type ExpandedAuth interface {
-	AuthFile
-	ExpandedEnt
-}
-
-type ExpandedFile interface {
-	File
-	ExpandedEnt
-	Mode() (Mode uint32)
-	// TODO(frobnitzem): also implement a max-IOUnit here.
-}
-
-type ExpandedEnt interface {
-	Dirent
-	Path() string
-	// file is nil if ent is not yet successfully opened.
-	Opened() (file ExpandedFile, Mode uint32)
-}
-
 // Simplified interface to a file that has been Open-ed.
 // Note: Since a Dirent can only be opened once,
 // it is up to Clunk to close any underlying File state,
@@ -101,6 +76,12 @@ type Dirent interface {
 
 	Stat(ctx context.Context) (Dir, error)
 	WStat(ctx context.Context, stat Dir) error
+
+	// This is automatically called by the server
+	// on new Dirent-s (i.e. returned from Attach/Walk/Create).
+	// It informs the server of the internal data structure
+	// used to track this file's interfaces, Path, and Open mode (if opened).
+	SetInfo(info *SFid)
 }
 
 // Helper function to check Dirent.Qid().Type for QTDIR bit.

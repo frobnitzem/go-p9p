@@ -52,6 +52,10 @@ func (ref *FileRef) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 	return (&dirList{dirs, false}).Next, nil
 }
 
+func (ref *FileRef) SetInfo(sfid *p9p.SFid) {
+	ref.SFid = sfid
+}
+
 func (ref *FileRef) Clunk(ctx context.Context) error {
 	if ref.file != nil {
 		return ref.file.Close()
@@ -77,7 +81,7 @@ func (ref *FileRef) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.D
 	}
 
 	// names is guaranteed to pass p9p.ValidPath
-	newpath, err := relName(ref.Path, names...)
+	newpath, err := p9p.WalkName(ref.Path, names...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,8 +97,8 @@ func (ref *FileRef) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.D
 
 func (ref *FileRef) Create(ctx context.Context, name string,
 	perm uint32, mode p9p.Flag) (p9p.Dirent, p9p.File, error) {
-	// relName requires name to be in current dir
-	newrel, err := relName(ref.Path, name)
+	// RelName requires name to be in current dir
+	newrel, err := p9p.CreateName(ref.Path, name)
 	if err != nil {
 		return nil, nil, err
 	}

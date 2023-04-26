@@ -87,7 +87,7 @@ func (fs *fsState) Attach(ctx context.Context, uname, aname string,
 
 	//fs.fids = make(map[*cEnt]Fid)
 	return cEnt{
-		path: make([]string, 0),
+		//path: make([]string, 0),
 		fid:  rootFid,
 		qid:  qid,
 		fs:   fs,
@@ -108,13 +108,13 @@ func (w Warning) Error() string {
 }
 
 type cEnt struct {
-	path []string // absolute path
+	//path []string // absolute path
 	fid  Fid
 	qid  Qid // FIXME(frobnitzem): stash qids here
 	fs   *fsState
 }
 
-var noEnt cEnt = cEnt{nil, NOFID, Qid{}, nil}
+var noEnt cEnt = cEnt{NOFID, Qid{}, nil}
 
 type fileRef struct {
 	cEnt
@@ -130,6 +130,8 @@ func (fs *fsState) newEnt() cEnt {
 		fs:  fs,
 	}
 }
+
+func (_ cEnt) SetInfo(_ *SFid) {}
 
 // Note: This always returns returns a file with a nonzero IOUnit.
 func (ent cEnt) Open(ctx context.Context, mode Flag) (File, error) {
@@ -225,7 +227,7 @@ func (ent cEnt) Qid() Qid {
 
 func (ent cEnt) Create(ctx context.Context, name string,
 	perm uint32, mode Flag) (Dirent, File, error) {
-	if name == "." || name == ".." || strings.Contains(name, "/\\") {
+	if len(name) == 0 || name == "." || name == ".." || strings.Contains(name, "/\\") {
 		return noEnt, noFile, MessageRerror{"Invalid filename"}
 	}
 	if !IsDir(ent) {
@@ -235,7 +237,7 @@ func (ent cEnt) Create(ctx context.Context, name string,
 	if err != nil {
 		return noEnt, noFile, err
 	}
-	ent.path = append(ent.path, name)
+	//ent.path = append(ent.path, name)
 	ent.qid = qid
 
 	// TODO(frobnitzem): this appears twice, make a fileEnt function.
@@ -262,7 +264,7 @@ func (ent cEnt) Remove(ctx context.Context) error {
 func (ent cEnt) Walk(ctx context.Context,
 	names ...string) ([]Qid, Dirent, error) {
 	steps, bsp := NormalizePath(names)
-	if bsp < 0 || bsp > len(ent.path) {
+	if bsp < 0 { //|| bsp > len(ent.path) {
 		return nil, ent, MessageRerror{"invalid path: " + strings.Join(names, "/")}
 	}
 
@@ -275,9 +277,9 @@ func (ent cEnt) Walk(ctx context.Context,
 		return qids, noEnt, Warning{"Incomplete walk result"}
 	}
 	// drop part of ent.path
-	steps = steps[:len(qids)]
-	remain := len(ent.path) - bsp
-	next.path = append(ent.path[:remain], steps[bsp:]...)
+	//steps = steps[:len(qids)]
+	//remain := len(ent.path) - bsp
+	//next.path = append(ent.path[:remain], steps[bsp:]...)
 	if len(qids) > 0 {
 		next.qid = qids[len(qids)-1]
 	} else {

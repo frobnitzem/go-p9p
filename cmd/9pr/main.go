@@ -80,15 +80,18 @@ func main() {
 		stderr: os.Stderr,
 		root:   root,
 		pwd:    pwd,
+		path:   "/",
 	}
 
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem("ls"),
-		// readline.PcItem("find"),
-		readline.PcItem("stat"),
 		readline.PcItem("cat"),
 		readline.PcItem("cd"),
+		readline.PcItem("mkdir"),
 		readline.PcItem("pwd"),
+		readline.PcItem("rm"),
+		readline.PcItem("touch"),
+		readline.PcItem("write"),
 	)
 
 	rl, err := readline.NewEx(&readline.Config{
@@ -127,6 +130,12 @@ func main() {
 			cmd = commander.cmdpwd
 		case "cat":
 			cmd = commander.cmdcat
+		case "rm":
+			cmd = commander.cmdrm
+		case "touch":
+			cmd = commander.cmdtouch
+		case "mkdir":
+			cmd = commander.cmdmkdir
 		case "write":
 			cmd = commander.cmdwrite
 		default:
@@ -159,13 +168,20 @@ type fsCommander struct {
 	stderr   io.Writer
 }
 
-func (c *fsCommander) toWalk(p string) (p9p.Dirent, []string, error) {
+func (c *fsCommander) toWalk(p string) (p9p.Dirent, []string, string, error) {
 	isAbs, steps, err := p9p.ToWalk(c.pwd, p)
 	rel := c.pwd
+	path := c.path
+
 	if isAbs {
 		rel = c.root
+		path = "/"
 	}
-	return rel, steps, err
+	path, err = p9p.WalkName(path, steps...)
+	if err != nil { // should not happen
+		return rel, steps, path, err
+	}
+	return rel, steps, path, err
 }
 
 func (c *fsCommander) cmdls(ctx context.Context, args ...string) error {
@@ -182,7 +198,7 @@ func (c *fsCommander) cmdls(ctx context.Context, args ...string) error {
 			fmt.Fprintln(wr, p+":")
 		}
 
-		rel, steps, err := c.toWalk(p)
+		rel, steps, _, err := c.toWalk(p)
 		if err != nil {
 			return err
 		}
@@ -242,7 +258,7 @@ func (c *fsCommander) cmdcd(ctx context.Context, args ...string) error {
 		return fmt.Errorf("invalid args: %v", args)
 	}
 
-	rel, steps, err := c.toWalk(p)
+	rel, steps, path, err := c.toWalk(p)
 	if err != nil {
 		return err
 	}
@@ -258,8 +274,102 @@ func (c *fsCommander) cmdcd(ctx context.Context, args ...string) error {
 
 	c.pwd.Clunk(ctx)
 	c.pwd = next
+	c.path = path
 
 	return nil
+}
+
+func (c *fsCommander) cmdrm(ctx context.Context, args ...string) error {
+	var ret error
+	ret1 := errors.New("error")
+
+	for _, p := range args {
+		rel, steps, _, err := c.toWalk(p)
+		if err != nil {
+			fmt.Println("Invalid path: ", p)
+			ret = ret1
+			continue
+		}
+
+		_, ent, err := rel.Walk(ctx, steps...)
+		if err != nil {
+			fmt.Println(err)
+			ret = ret1
+			continue
+		}
+
+		err = ent.Remove(ctx)
+		if err != nil {
+			fmt.Println(err)
+			ret = ret1
+			continue
+		}
+	}
+	return ret
+}
+
+func (c *fsCommander) cmdtouch(ctx context.Context, args ...string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("invalid args: %v", args)
+	}
+	p := args[0]
+
+	rel, steps, _, err := c.toWalk(p)
+	if err != nil {
+		return err
+	}
+	if len(steps) < 1 {
+		return fmt.Errorf("Need a filename.")
+	}
+	p = steps[len(steps)-1]
+	steps = steps[:len(steps)-1]
+
+	qids, next, err := rel.Walk(ctx, steps...)
+	if err != nil || len(qids) != len(steps) {
+		return err
+	}
+	if !p9p.IsDir(next) {
+		next.Clunk(ctx)
+		return errors.New("not a directory.")
+	}
+	ref, _, err := next.Create(ctx, p, 0644, p9p.OREAD)
+	if err != nil {
+		ref.Clunk(ctx)
+	}
+
+	return err
+}
+
+func (c *fsCommander) cmdmkdir(ctx context.Context, args ...string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("invalid args: %v", args)
+	}
+	p := args[0]
+
+	rel, steps, _, err := c.toWalk(p)
+	if err != nil {
+		return err
+	}
+	if len(steps) < 1 {
+		return fmt.Errorf("Need a filename.")
+	}
+	p = steps[len(steps)-1]
+	steps = steps[:len(steps)-1]
+
+	qids, next, err := rel.Walk(ctx, steps...)
+	if err != nil || len(qids) != len(steps) {
+		return err
+	}
+	if !p9p.IsDir(next) {
+		next.Clunk(ctx)
+		return errors.New("not a directory.")
+	}
+	ref, _, err := next.Create(ctx, p, p9p.DMDIR | 0644, p9p.OREAD)
+	if err != nil {
+		ref.Clunk(ctx)
+	}
+
+	return err
 }
 
 func (c *fsCommander) cmdpwd(ctx context.Context, args ...string) error {
@@ -282,7 +392,7 @@ func (c *fsCommander) cmdcat(ctx context.Context, args ...string) error {
 		return fmt.Errorf("invalid args: %v", args)
 	}
 
-	rel, steps, err := c.toWalk(p)
+	rel, steps, _, err := c.toWalk(p)
 	if err != nil {
 		return err
 	}
@@ -318,7 +428,7 @@ func (c *fsCommander) cmdcat(ctx context.Context, args ...string) error {
 func (c *fsCommander) cmdwrite(ctx context.Context, args ...string) error {
 	p := args[0]
 
-	rel, steps, err := c.toWalk(p)
+	rel, steps, _, err := c.toWalk(p)
 	if err != nil {
 		return err
 	}
