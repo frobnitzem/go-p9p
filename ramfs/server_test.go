@@ -132,3 +132,21 @@ func TestServer(t *testing.T) {
 	cancel() // signal the server to stop serving
 	wg.Wait()
 }
+
+/* TODO: capture mkdir/walk session testing walk to ..
+mkdir a/b
+cd a
+cd ..
+cd a/b
+cd ../..
+cd a/b
+mkdir ../c
+ls ..
+cd ../c
+
+walk:  [..] [] 0 0 [qid(dir, v=0, p=1)]
+walk:  [.. ..] [] 0 0 [qid(file, v=0, p=0) qid(dir, v=0, p=1)]
+walk:  [..] [a] 0 1 [qid(dir, v=0, p=2)]
+walk:  [..] [a] 0 1 [qid(dir, v=0, p=2)]
+walk:  [.. c] [a c] 1 1 [qid(dir, v=0, p=2) qid(dir, v=0, p=4)]
+*/

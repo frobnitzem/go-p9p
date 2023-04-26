@@ -13,52 +13,74 @@ import (
 // Only directories have len(children) > 0.
 type FileEnt struct {
 	sync.Mutex
-	parents  []*FileEnt
-	children []*FileEnt
+	nref int
+	children map[string]*FileEnt
 
 	fs   *fServer
 	Info p9p.Dir
 	Data []byte
 }
 
-func (f *FileEnt) link_child(c *FileEnt) {
+func (f *FileEnt) incref() string {
 	f.Lock()
 	defer f.Unlock()
-	// FIXME: need a non-blocking retry-loop here
-	c.Lock()
-	defer c.Unlock()
 
-	f.children = append(f.children, c)
-	c.parents = append(c.parents, f)
+	f.nref++
+	return f.Info.Name
 }
 
-func (f *FileEnt) Remove() error {
+// Note: For this to work, incref must never
+// be called after decref() has left the ent
+// at state nref = 0
+func (f *FileEnt) decref() int {
+	f.Lock()
+	f.nref--
+	n := f.nref
+	f.Unlock()
+
+	if n == 0 && f.children != nil { // trigger child deletion
+		for _, c := range(f.children) {
+			c.decref()
+		}
+		f.children = nil
+	}
+	return n
+}
+
+// c.incref() should already have been called, so there
+// is no chance that c will be deleted during this call.
+// If this call returns an error, c.decref should be called.
+func (f *FileEnt) link_child(name string, c *FileEnt) error {
 	f.Lock()
 	defer f.Unlock()
-	for _, c := range f.children {
-		if c.parents[0] == f {
-			return errors.New("Cannot delete non-empty dir.")
-		}
+
+	if f.children == nil {
+		return errors.New("not a directory.")
 	}
-	for i, c := range f.children {
-		// FIXME: need a non-blocking retry-loop here
-		c.Lock()
-		// Should not occur, but now we have an incomplete, weakly linked dir.
-		if c.parents[0] == f {
-			c.Unlock()
-			f.children = f.children[i:]
-			return errors.New("Cannot delete non-empty dir.")
-		}
-		c.parents = dropEnt(f, c.parents)
-		c.Unlock()
+	_, found := f.children[name]
+	if found {
+		return errors.New("duplicate file name")
 	}
-	for _, p := range f.parents {
-		p.Lock()
-		// Technically, each child should be unique,
-		// dropEnt should always drop exactly 1 element here.
-		p.children = dropEnt(f, p.children)
-		p.Unlock()
+	f.children[name] = c
+	return nil
+}
+
+// Opposite of link_child
+// Caller is responsible for calling c.decref *after* this
+// routine returns successfully (error == nil).
+func (f *FileEnt) unlink_child(name string) error {
+	if f.children == nil {
+		return errors.New("not a directory.")
 	}
+
+	f.Lock()
+	defer f.Unlock()
+	_, found := f.children[name]
+	if !found {
+		return errors.New("not found")
+	}
+	delete(f.children, name)
+
 	return nil
 }
 

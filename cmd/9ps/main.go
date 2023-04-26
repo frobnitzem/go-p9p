@@ -12,6 +12,7 @@ import (
 	"github.com/frobnitzem/go-p9p"
 	"github.com/frobnitzem/go-p9p/ufs"
 	"github.com/frobnitzem/go-p9p/sleepfs"
+	"github.com/frobnitzem/go-p9p/ramfs"
 	"golang.org/x/net/context"
 )
 
@@ -68,6 +69,8 @@ func main() {
 			var session p9p.Session
 			if root == "sleepfs" {
 				session = p9p.SFileSys(sleepfs.NewServer(ctx))
+			} else if root == "ramfs" {
+				session = p9p.SFileSys(ramfs.NewServer(ctx))
 			} else {
 				session = p9p.SFileSys(ufs.NewServer(ctx, root))
 			}
