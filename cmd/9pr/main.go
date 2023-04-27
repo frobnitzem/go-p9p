@@ -84,9 +84,10 @@ func main() {
 	}
 
 	completer := readline.NewPrefixCompleter(
-		readline.PcItem("ls"),
 		readline.PcItem("cat"),
 		readline.PcItem("cd"),
+		readline.PcItem("exit"),
+		readline.PcItem("ls"),
 		readline.PcItem("mkdir"),
 		readline.PcItem("pwd"),
 		readline.PcItem("rm"),
@@ -122,6 +123,9 @@ func main() {
 		var cmd func(ctx context.Context, args ...string) error
 
 		switch name {
+		case "exit":
+			csession.Stop(nil)
+			return
 		case "ls":
 			cmd = commander.cmdls
 		case "cd":

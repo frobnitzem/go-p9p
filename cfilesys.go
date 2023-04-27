@@ -277,6 +277,7 @@ func (ent cEnt) Walk(ctx context.Context,
 	// drop part of ent.path
 	//steps = steps[:len(qids)]
 	//remain := len(ent.path) - bsp
+	// Note: potentially dangerous use of append [may modify ent.path]
 	//next.path = append(ent.path[:remain], steps[bsp:]...)
 	if len(qids) > 0 {
 		next.qid = qids[len(qids)-1]
