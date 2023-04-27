@@ -51,8 +51,6 @@ func (h FileHandle) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 	return h.ent.OpenDir(ctx)
 }
 
-func (_ FileHandle) SetInfo(sfid *p9p.SFid) { }
-
 func (h FileHandle) Clunk(ctx context.Context) error {
 	h.ent.decref()
 	for i := range(h.parents) {

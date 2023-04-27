@@ -76,12 +76,6 @@ type Dirent interface {
 
 	Stat(ctx context.Context) (Dir, error)
 	WStat(ctx context.Context, stat Dir) error
-
-	// This is automatically called by the server
-	// on new Dirent-s (i.e. returned from Attach/Walk/Create).
-	// It informs the server of the internal data structure
-	// used to track this file's interfaces, Path, and Open mode (if opened).
-	SetInfo(info *SFid)
 }
 
 // Helper function to check Dirent.Qid().Type for QTDIR bit.
