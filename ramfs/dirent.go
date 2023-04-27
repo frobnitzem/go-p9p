@@ -51,11 +51,9 @@ func (h FileHandle) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 	return h.ent.OpenDir(ctx)
 }
 
-func (_ FileHandle) SetInfo(sfid *p9p.SFid) { }
-
 func (h FileHandle) Clunk(ctx context.Context) error {
 	h.ent.decref()
-	for i := range(h.parents) {
+	for i := range h.parents {
 		h.parents[len(h.parents)-i-1].decref()
 	}
 	return nil
@@ -165,12 +163,25 @@ func (h FileHandle) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.D
 		// ref = /
 		// rh.ent = /
 		// rh.parents = []
-		rh.parents = append(append(
+		rh.parents = make([]*FileEnt, len(h.parents)-ndel + 1 + len(ans)-ndel)
+
+		// would use append, but append mutates its input
+		/*rh.parents = append(append(
 							h.parents[:len(h.parents)-ndel],
 							ref),
-							ans[ndel:]...)
-		for _, p := range(rh.parents) {
+							ans[ndel:]...)*/
+		i0 := len(h.parents)-ndel + 1
+		for i := range rh.parents {
+			var p *FileEnt
+			if i < len(h.parents)-ndel {
+				p = h.parents[i]
+			} else if i >= i0 {
+				p = ans[ndel+i-i0]
+			} else {
+				p = ref
+			}
 			p.incref()
+			rh.parents[i] = p
 		}
 		rh.ent = rh.parents[len(rh.parents)-1]
 		rh.parents = rh.parents[:len(rh.parents)-1]
@@ -179,7 +190,7 @@ func (h FileHandle) Walk(ctx context.Context, names ...string) ([]p9p.Qid, p9p.D
 	}
 
 	qids = make([]p9p.Qid, len(ans))
-	for i, a := range(ans) {
+	for i, a := range ans {
 		qids[i] = a.Info.Qid
 	}
 

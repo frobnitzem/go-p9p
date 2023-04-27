@@ -131,8 +131,6 @@ func (fs *fsState) newEnt() cEnt {
 	}
 }
 
-func (_ cEnt) SetInfo(_ *SFid) {}
-
 // Note: This always returns returns a file with a nonzero IOUnit.
 func (ent cEnt) Open(ctx context.Context, mode Flag) (File, error) {
 	_, iounit, err := ent.fs.session.Open(ctx, ent.fid, mode)
@@ -279,6 +277,7 @@ func (ent cEnt) Walk(ctx context.Context,
 	// drop part of ent.path
 	//steps = steps[:len(qids)]
 	//remain := len(ent.path) - bsp
+	// Note: potentially dangerous use of append [may modify ent.path]
 	//next.path = append(ent.path[:remain], steps[bsp:]...)
 	if len(qids) > 0 {
 		next.qid = qids[len(qids)-1]

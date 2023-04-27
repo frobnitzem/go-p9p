@@ -52,10 +52,6 @@ func (ref *FileRef) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 	return (&dirList{dirs, false}).Next, nil
 }
 
-func (ref *FileRef) SetInfo(sfid *p9p.SFid) {
-	ref.SFid = sfid
-}
-
 func (ref *FileRef) Clunk(ctx context.Context) error {
 	if ref.file != nil {
 		return ref.file.Close()

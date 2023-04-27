@@ -23,7 +23,6 @@ type fServer struct {
 type FileRef struct {
 	fs   *fServer
 	file *os.File
-	SFid *p9p.SFid
 	Path string
 	Info p9p.Dir
 }

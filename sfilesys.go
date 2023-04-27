@@ -114,10 +114,9 @@ func (sess *session) getRef(fid Fid) (*SFid, error) {
 	return ref, nil
 }
 
-// Sets ref.Ent and informs the ent of ref.
+// Sets ref.Ent (could also informs the ent of ref.)
 func (ref *SFid) link(ent Dirent) {
 	ref.Ent = ent
-	ent.SetInfo(ref)
 }
 
 // Add a new reference to the refs table.
