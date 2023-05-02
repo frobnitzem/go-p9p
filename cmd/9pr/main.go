@@ -338,8 +338,9 @@ func (c *fsCommander) cmdtouch(ctx context.Context, args ...string) error {
 	}
 	ref, _, err := next.Create(ctx, p, 0644, p9p.OREAD)
 	if err != nil {
-		ref.Clunk(ctx)
+		return err
 	}
+	ref.Clunk(ctx)
 
 	return err
 }
