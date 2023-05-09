@@ -64,10 +64,16 @@ func newDir(path uint64, fname string, uname string, mode uint32) p9p.Dir {
 	return dir
 }
 
+func withName(name string, dir p9p.Dir) p9p.Dir {
+	x := dir
+	x.Name = name
+	return x
+}
+
 // Warning! Does not validate fname for things like "."
 // Do this before calling.
 // If successful, this returns a new FileEnt with one
-// reference to it.
+// reference to it (the parent in the file tree).
 func (fs *fServer) Create(parent *FileEnt, info p9p.Dir) (*FileEnt, error) {
 	f := &FileEnt{
 			nref: 1,

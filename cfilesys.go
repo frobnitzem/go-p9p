@@ -88,9 +88,9 @@ func (fs *fsState) Attach(ctx context.Context, uname, aname string,
 	//fs.fids = make(map[*cEnt]Fid)
 	return cEnt{
 		//path: make([]string, 0),
-		fid:  rootFid,
-		qid:  qid,
-		fs:   fs,
+		fid: rootFid,
+		qid: qid,
+		fs:  fs,
 	}, nil
 }
 
@@ -109,9 +109,9 @@ func (w Warning) Error() string {
 
 type cEnt struct {
 	//path []string // absolute path
-	fid  Fid
-	qid  Qid // FIXME(frobnitzem): stash qids here
-	fs   *fsState
+	fid Fid
+	qid Qid
+	fs  *fsState
 }
 
 var noEnt cEnt = cEnt{NOFID, Qid{}, nil}

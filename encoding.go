@@ -220,7 +220,17 @@ func (e *encoder) encode(vs ...interface{}) error {
 				// NOTE(stevvooe): Prepend size preceeding Dir. See bugs in
 				// http://man.cat-v.org/plan_9/5/stat to make sense of this.
 				// The field has been included here but we need to make sure
-				// to double emit it for Rstat.
+				// to double emit it for Rstat
+				if err := e.encode(uint16(size9p(elements...))); err != nil {
+					return err
+				}
+			case MessageTwstat, *MessageTwstat:
+				// Write Fid
+				if err := e.encode(elements[0]); err != nil {
+					return err
+				}
+				elements = elements[1:]
+				// Write size
 				if err := e.encode(uint16(size9p(elements...))); err != nil {
 					return err
 				}
@@ -386,12 +396,21 @@ func (d *decoder) decode(vs ...interface{}) error {
 			}
 
 			switch v.(type) {
-			case *MessageRstat, MessageRstat:
+			case MessageRstat, *MessageRstat:
 				// NOTE(stevvooe): Consume extra size preceeding Dir. See bugs
 				// in http://man.cat-v.org/plan_9/5/stat to make sense of
 				// this. The field has been included here but we need to make
 				// sure to double emit it for Rstat. decode extra size header
 				// for stat structure.
+				var ll uint16
+				if err := d.decode(&ll); err != nil {
+					return err
+				}
+			case MessageTwstat, *MessageTwstat:
+				if err := d.decode(elements[0]); err != nil {
+					return err
+				}
+				elements = elements[1:]
 				var ll uint16
 				if err := d.decode(&ll); err != nil {
 					return err
@@ -489,6 +508,8 @@ func size9p(vs ...interface{}) uint32 {
 			// http://man.cat-v.org/plan_9/5/stat to make sense of this.
 			switch v.(type) {
 			case *MessageRstat, MessageRstat:
+				s += size9p(uint16(0)) // for extra size field before dir
+			case *MessageTwstat, MessageTwstat:
 				s += size9p(uint16(0)) // for extra size field before dir
 			}
 

@@ -20,12 +20,14 @@ var (
 	root string
 	addr string
 	perf bool
+	debug bool
 )
 
 func init() {
 	flag.StringVar(&root, "root", "/tmp", "root of filesystem to serve over 9p")
 	flag.StringVar(&addr, "addr", "localhost:5640", "bind addr for 9p server, prefix with unix: for unix socket")
 	flag.BoolVar(&perf, "perf", false, "Run a performance profile server?")
+	flag.BoolVar(&debug, "v", false, "Verbose debugging output.")
 }
 
 func main() {
@@ -73,6 +75,9 @@ func main() {
 				session = p9p.SFileSys(ramfs.NewServer(ctx))
 			} else {
 				session = p9p.SFileSys(ufs.NewServer(ctx, root))
+			}
+			if debug {
+				session = p9p.NewLogger("", session)
 			}
 
 			if err := p9p.ServeConn(ctx, conn, p9p.SSession(session)); err != nil {

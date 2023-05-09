@@ -34,21 +34,29 @@ func (d *dirList) Next(ctx context.Context) ([]p9p.Dir, error) {
 	return d.dirs, nil
 }
 
-func (ref *FileEnt) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
+func (ref *FileEnt) OpenDir(ctx context.Context,
+							dotdot p9p.Dir) (p9p.ReadNext, error) {
 	ref.Lock()
 	defer ref.Unlock()
 	if !ref.IsDir() {
 		return nil, p9p.MessageRerror{Ename: "not a directory"}
 	}
 
-	var dirs []p9p.Dir
+	dirs := []p9p.Dir{dotdot}
 	for _, file := range ref.children {
 		dirs = append(dirs, file.Info)
 	}
 	return (&dirList{dirs, false}).Next, nil
 }
 func (h FileHandle) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
-	return h.ent.OpenDir(ctx)
+	var dotdot p9p.Dir
+	if len(h.parents) == 0 {
+		dotdot = withName("..", h.ent.Info)
+	} else {
+		dotdot = withName("..", h.parents[len(h.parents)-1].Info)
+	}
+
+	return h.ent.OpenDir(ctx, dotdot)
 }
 
 func (h FileHandle) Clunk(ctx context.Context) error {
@@ -224,6 +232,7 @@ func (h FileHandle) createImpl(fname string, mode uint32) (FileHandle, error) {
 		return noHandle, err
 	}
 	parents := append(h.parents, h.ent)
+	ent.incref() // add ref from this handle:
 	return FileHandle{Path: path, ent: ent, sess: h.sess, parents: parents}, nil
 }
 
@@ -277,7 +286,7 @@ func (ref *FileEnt) Read(ctx context.Context, p []byte,
 	defer ref.Unlock()
 
 	n := int64(len(ref.Data))
-	if offset >= n {
+	if offset > n {
 		return 0, io.EOF
 	}
 	m := int64(len(p))
