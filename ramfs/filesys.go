@@ -71,7 +71,7 @@ func withName(name string, dir p9p.Dir) p9p.Dir {
 }
 
 // Warning! Does not validate fname for things like "."
-// Do this before calling.
+// The caller must do that.
 // If successful, this returns a new FileEnt with one
 // reference to it (the parent in the file tree).
 func (fs *fServer) Create(parent *FileEnt, info p9p.Dir) (*FileEnt, error) {

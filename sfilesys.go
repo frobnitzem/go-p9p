@@ -156,8 +156,6 @@ func (sess *session) newRef(fid Fid) (ref *SFid, err error) {
 // Delete reference from the refs table.
 // If remove is true, calls Dirent.Remove.
 // Otherwise, calls Dirent.Clunk.
-// TODO(frobnitzem): determine whether aFid can be clunked.
-// This code won't see it, so will return an error here in this case.
 func (sess *session) delRef(ctx context.Context, fid Fid,
 	remove bool) error {
 

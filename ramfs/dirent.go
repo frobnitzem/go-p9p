@@ -7,7 +7,7 @@ import (
 	p9p "github.com/frobnitzem/go-p9p"
 )
 
-var ENotImpl error = p9p.MessageRerror{Ename: "not implemented"} 
+var ENotImpl error = p9p.MessageRerror{Ename: "not implemented"}
 var noHandle FileHandle = FileHandle{Path:"/", ent:nil, sess:nil}
 
 func (f *FileEnt) IsDir() bool {
@@ -82,7 +82,7 @@ func (h FileHandle) Remove(ctx context.Context) error {
 	p := h.parents[len(h.parents)-1]
 	// TODO(frobnitzem): consider using h.Name here?
 	err := p.unlink_child(h.ent.Info.Name)
-	if err != nil {
+	if err == nil { // remove parent -> child ref count
 		h.ent.decref()
 	}
 
@@ -231,7 +231,9 @@ func (h FileHandle) createImpl(fname string, mode uint32) (FileHandle, error) {
 	if err != nil {
 		return noHandle, err
 	}
-	parents := append(h.parents, h.ent)
+	parents := make([]*FileEnt, len(h.parents)+1)
+	copy(parents, h.parents)
+	parents[len(h.parents)] = h.ent
 	ent.incref() // add ref from this handle:
 	return FileHandle{Path: path, ent: ent, sess: h.sess, parents: parents}, nil
 }
@@ -322,6 +324,7 @@ func (ref *FileEnt) Write(ctx context.Context, p []byte,
 	} else {
 		copy(ref.Data[offset:offset+m], p)
 	}
+	ref.Info.Length = uint64(len(ref.Data))
 	return int(m), nil
 }
 func (h FileHandle) Write(ctx context.Context, p []byte,
