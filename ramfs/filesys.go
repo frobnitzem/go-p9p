@@ -110,5 +110,6 @@ func (fs *fServer) Attach(ctx context.Context, uname, aname string,
 		umask: 0022,
 		fs: fs,
 	}
+	fs.root.incref()
 	return FileHandle{Path: "/", ent: fs.root, sess: &sess}, nil
 }

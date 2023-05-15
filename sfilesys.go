@@ -489,15 +489,17 @@ func (sess *session) Create(ctx context.Context, parent Fid, name string,
 	if IsDir(ent) { // Do our own thing for directories.
 		next := SFid{Ent: ent}
 		err = openLocked(ctx, &next, mode)
-		if err != nil {
-			ent.Clunk(ctx) // Note: ignoring possible multiple errors
+		if err != nil { // Oops: Create has already succeeded
+						// - so now we have to delete everthing.
+			sess.delRef(ctx, parent, false)
+			// Note: ignoring possible multiple errors
 			return fail(err.Error())
 		}
 		file = next.File
 	}
 
 	// Success. Clean-up ref and replace with ent.
-	ref.Ent.Clunk(ctx)
+	//ref.Ent.Clunk(ctx)
 	ref.File = nil
 	ref.Mode = 0
 	ref.link(ent)

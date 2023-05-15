@@ -3,6 +3,7 @@ package ramfs
 import (
 	"context"
 	"io"
+	//"fmt"
 
 	p9p "github.com/frobnitzem/go-p9p"
 )
@@ -60,6 +61,7 @@ func (h FileHandle) OpenDir(ctx context.Context) (p9p.ReadNext, error) {
 }
 
 func (h FileHandle) Clunk(ctx context.Context) error {
+	//fmt.Printf("Clunk: %s (nref: %d)\n", h.ent.Info.Name, h.ent.nref)
 	h.ent.decref()
 	for i := range h.parents {
 		h.parents[len(h.parents)-i-1].decref()
